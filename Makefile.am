@@ -16,6 +16,11 @@ support/build-aux/depcomp \
 support/build-aux/install-sh \
 support/build-aux/ltmain.sh \
 support/build-aux/missing \
+support/m4/libtool.m4 \
+support/m4/ltoptions.m4 \
+support/m4/ltsugar.m4 \
+support/m4/ltversion.m4 \
+support/m4/lt~obsolete.m4 \
 $(distdir) \
 $(distdir).tar.gz
 

@@ -1,0 +1,173 @@
+\section{CTRNN}
+
+We want to use a Continuous Time Recurrent Neural Network (CTRNN).  A
+CTRNN can be described by the following Ordinary Differential Equation
+(ODE).
+
+\begin{align}
+  \tau_i \dot{y_i} =& -y_i + \sigma(\sum_{j=1}^n w_{ji}y_j - \theta_j) + I_i(t)
+\end{align}
+
+\noindent where $\tau_i$ is the time constant of the post-synaptic
+node, $y_i$ is the membrane potential of the post-synaptic node,
+$w_{ji}$ is the weight of the connection from the pre- to
+post-synaptic node, $\sigma(x)$ is the sigmoidal function $\sigma(x) =
+1/(1 + e^{-x})$, $\theta_i$ is the bias, and $I_i(t)$ is the input if
+any at time $t$.  See
+\href{http://en.wikipedia.org/wiki/Recurrent_neural_network#Continuous-time_RNN}{wikipedia}
+for more details.
+
+ It can be expressed more compactly using matrices.
+
+\begin{align}
+  T\circ\dot{Y} =& -Y + \Sigma(W\,Y - \Theta) + I(t)
+\end{align}
+
+The implementation will use the
+\href{http://www.gnu.org/software/gsl/}{GNU Scientific Library (GSL)}.
+
+<<file:ctrnn.h>>=
+#include <stddef.h>
+#include <stdlib.h>
+
+typedef struct ctrnn_params {
+  size_t  n; /* number of nodes */
+  double *weights;
+  double *time_constant;
+  double *bias;
+  double (*input)(double t, int i, void *user);
+} ctrnn_params;
+
+int dot_y(double t, double *y, double *dydt, void *params);
+
+int step_ctrnn(double *t, double* state, ctrnn_params *params);
+
+@ 
+
+<<file:ctrnn-private.h>>=
+void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
+
+double sigmoid(double x, void * params);
+@ 
+
+<<file:ctrnn.c>>=
+#include "ctrnn.h"
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_odeiv2.h>
+#include "ctrnn-private.h"
+
+int dot_y(double t, double *y, double *dydt, void *params)
+{
+  ctrnn_params *cparams = (ctrnn_params *) params;
+  <<Compute $R \set W \, Y - \Theta$.>>
+  <<Compute $R \set \Sigma(R)$.>>
+  <<Compute $R \set R - Y$.>>
+  <<Compute $R \set R + I(t)$.>>
+  <<Compute $R \set R \circ Y^{-1}$.>>
+  return GSL_SUCCESS;
+}
+@ 
+
+
+
+This is a
+\href{http://www.gnu.org/software/gsl/manual/html_node/Level-2-GSL-BLAS-Interface.html}{level
+  2 GSL BLAS operation} and we need to
+\href{http://www.gnu.org/software/gsl/manual/html_node/Matrix-views.html}{make
+  a matrix view} and a
+\href{http://www.gnu.org/software/gsl/manual/html_node/Vector-views.html}{vector
+  view}.
+
+\begin{align}
+  R =& W\, Y - \Theta
+\end{align}
+
+<<Compute $R \set W \, Y - \Theta$.>>=
+gsl_matrix_view W = gsl_matrix_view_array(cparams->weights, cparams->n, cparams->n);
+gsl_vector_view B = gsl_vector_view_array(cparams->bias, cparams->n); // $\Theta$
+gsl_vector_view Y = gsl_vector_view_array(state, cparams->n);
+gsl_vector* R = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
+gsl_vector_memcpy(R, &B.vector);
+int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, &R.vector);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+@ 
+
+<<Compute $R \set \Sigma(R)$.>>=
+      gsl_vector_map(sigmoid, R, NULL);
+@
+
+This is a
+\href{http://www.gnu.org/software/gsl/manual/html_node/Level-1-GSL-BLAS-Interface.html}{level
+  1 BLAS operation}.  This API computes $y \leftarrow \alpha x + y$.
+<<API>>= 
+  int gsl_blas_daxpy (double alpha, const gsl_vector * x, gsl_vector * y)
+@ 
+<<Compute $R \set R - Y$.>>=
+      gsl_blas_dapy(-1.0, &Y.vector, R);
+@
+
+<<Compute $R \set R + I(t)$.>>=
+  gsl_vector* I = gsl_vector_alloc(cparams->n);
+  gsl_vector_set_all(I, t);
+  gsl_vector_map(fill_input, I, cparams);
+  gsl_blas_dapy(1.0, I, R);
+  gsl_vector_free(I);
+@
+
+<<Compute $R \set R \circ T^{-1}$.>>=
+  gsl_vector_view T = gsl_vector_view_array(cparams->time_constant, cparams->n);
+  gsl_vector* Tinv = gsl_vector_alloc(cparams->n);
+  gsl_vector_memcpy(Tinv, &T.vector);
+  gsl_vector_map(invert, Tinv, NULL);
+  gsl_vector_map(hadamard, R, Tinv);
+  gsl_vector_free(Tinv);
+@
+
+<<Function>>=
+double fill_input(double t, size_t i, void *params)
+{
+  ctrnn_params *cparams = (ctrnn_params *) params;
+  return cparams->input(t, i, NULL);
+}
+@ 
+
+<<Function>>=
+void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
+{
+  for (int i = 0; i < x->size; i++)
+    gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
+}
+@
+
+<<Function>>= 
+double sigmoid(double x, i, void * params)
+{
+  return 1./(1. + exp(-x));
+}
+@ 
+
+<<Function>>= 
+double invert(double x, i, void * params)
+{
+  return 1./x;
+}
+@
+
+<<Function>>= 
+double hadamard(double x, i, void * params)
+{
+  gsl_vector *v = (gsl_vector *)params;
+  return x*gsl_vector_get(v, i);
+}
+@
+
+
+To advance the ODE we will use the same skeleton outlined
+\href{http://www.gnu.org/software/gsl/manual/html_node/Ordinary-Differential-Equations.html}{here}.
+
+
+
+
+

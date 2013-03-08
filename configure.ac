@@ -37,15 +37,11 @@ AM_CONDITIONAL([LATEXMK], [test x"$LATEXMK_CHECK" = xyes && test x"$enable_latex
 
 # Checks for libraries.
 PKG_CHECK_MODULES([GUILE], [guile-2.0])
-PKG_CHECK_MODULES([EMACSY], [libemacsy])
+PKG_CHECK_MODULES([GSL], [gsl])
+#PKG_CHECK_MODULES([EMACSY], [libemacsy])
 #AX_CHECK_GLUT
 # The autoconf macro does not prefer these frameworks over the
 # standard X11 locations.
-
-AC_SUBST(GL_LDFLAGS, ["-framework OpenGL"])
-AC_SUBST(GLUT_LDFLAGS, ["-framework GLUT"])
-AC_SUBST(GLU_LDFLAGS, [])
-
 
 # Checks for header files.
 AC_HEADER_STDC
