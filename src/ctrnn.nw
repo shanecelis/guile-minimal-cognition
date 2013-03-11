@@ -1,3 +1,4 @@
+% -*- mode: Noweb; noweb-code-mode: c-mode -*-
 \section{CTRNN}
 
 We want to use a Continuous Time Recurrent Neural Network (CTRNN).  A
@@ -24,7 +25,8 @@ for more details.
 \end{align}
 
 The implementation will use the
-\href{http://www.gnu.org/software/gsl/}{GNU Scientific Library (GSL)}.
+\href{http://www.gnu.org/software/gsl/}{GNU Scientific Library (GSL)}
+for its linear algebra needs.
 
 <<file:ctrnn.h>>=
 #include <stddef.h>
@@ -40,24 +42,38 @@ typedef struct ctrnn_params {
 
 int dot_y(double t, double *y, double *dydt, void *params);
 
-int step_ctrnn(double *t, double* state, ctrnn_params *params);
-
+int step_ctrnn(double *t, double h, double* y, ctrnn_params *params);
 @ 
-
-<<file:ctrnn-private.h>>=
-void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
-
-double sigmoid(double x, void * params);
-@ 
-
+ 
 <<file:ctrnn.c>>=
+#include <libguile.h>
+#ifndef SCM_MAGIC_SNARFER 
 #include "ctrnn.h"
-#include <gsl/gsl_errno.h>
-#include <gsl/gsl_matrix.h>
-#include <gsl/gsl_vector.h>
-#include <gsl/gsl_odeiv2.h>
-#include "ctrnn-private.h"
+#include "math.h"
+<<Include GSL headers.>>
+#endif
 
+/* private prototypes */
+typedef double (*functor)(double f, size_t i, void* params);
+
+void gsl_vector_map(functor f, gsl_vector *x, void *params);
+double sigmoid(double x, size_t i, void * params);
+double fill_input(double t, size_t i, void *params);
+double invert(double x, size_t i, void * params);
+double hadamard(double x, size_t i, void * params);
+
+<<Function>>
+
+<<Primitive>>
+
+<<Initialize>>
+@ 
+
+First thing we'd like to do is compute the $\dot{Y}$ vector for our
+given CTRNN, and we won't be using a method that requires the
+Jacobian.
+
+<<Function>>=
 int dot_y(double t, double *y, double *dydt, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
@@ -65,12 +81,94 @@ int dot_y(double t, double *y, double *dydt, void *params)
   <<Compute $R \set \Sigma(R)$.>>
   <<Compute $R \set R - Y$.>>
   <<Compute $R \set R + I(t)$.>>
-  <<Compute $R \set R \circ Y^{-1}$.>>
+  <<Compute $R \set R \circ T^{-1}$.>>
   return GSL_SUCCESS;
+}
+
+@ 
+
+To advance the ODE we will use the same skeleton outlined
+\href{http://www.gnu.org/software/gsl/manual/html_node/ODE-Example-programs.html}{here}.
+
+<<Function>>=
+int step_ctrnn(double *t, double h, double* y, ctrnn_params *params)
+{
+  gsl_odeiv2_system sys = {dot_y, NULL, params->n, params};
+  gsl_odeiv2_driver * d = 
+         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rkf45,
+                                        1e-2, 1e-6, 0.0);
+
+  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+     
+  gsl_odeiv2_driver_free (d);
+  return status;
 }
 @ 
 
+\subsection{Again, But With More Scheme!}
 
+<<Primitive>>=
+SCM_DEFINE (scm_step_ctrnn, "ctrnn-step", 4, 0, 0,
+            (SCM ctrnn, SCM t, SCM h, SCM y),
+            "Move a CTRNN forward a single time step.")
+{
+  return SCM_BOOL_F;
+}
+@ 
+
+<<Initialize>>=
+void init_ctrnn(void)
+{
+#ifndef SCM_MAGIC_SNARFER 
+#include "ctrnn.c.x" 
+#endif
+}
+@
+
+<<file:ctrnn.scm>>=
+(define-module (ctrnn)
+ #:use-module (ice-9 optargs))
+
+(load-extension "./libguile-ctrnn.dylib" "init_ctrnn")
+@
+
+\appendix
+\section{Appendix}
+
+\subsection{Miscellaneous}
+<<Include GSL headers.>>=
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_odeiv2.h>
+#include <gsl/gsl_blas.h>
+@
+
+\subsection{Map and Functors}
+
+<<Function>>=
+void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
+{
+  for (int i = 0; i < x->size; i++)
+    gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
+}
+
+double sigmoid(double x, size_t i, void * params)
+{
+  return 1./(1. + exp(-x));
+}
+
+double invert(double x, size_t i, void * params)
+{
+  return 1./x;
+}
+
+double hadamard(double x, size_t i, void * params)
+{
+  gsl_vector *v = (gsl_vector *)params;
+  return x*gsl_vector_get(v, i);
+}
+@
 
 This is a
 \href{http://www.gnu.org/software/gsl/manual/html_node/Level-2-GSL-BLAS-Interface.html}{level
@@ -81,48 +179,49 @@ This is a
   view}.
 
 \begin{align}
-  R =& W\, Y - \Theta
+  R \set& W\, Y - \Theta
 \end{align}
 
 <<Compute $R \set W \, Y - \Theta$.>>=
 gsl_matrix_view W = gsl_matrix_view_array(cparams->weights, cparams->n, cparams->n);
 gsl_vector_view B = gsl_vector_view_array(cparams->bias, cparams->n); // $\Theta$
-gsl_vector_view Y = gsl_vector_view_array(state, cparams->n);
-gsl_vector* R = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
+gsl_vector_view Y = gsl_vector_view_array(y, cparams->n);
+gsl_vector_view Rview = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
+gsl_vector* R = &Rview.vector;
 gsl_vector_memcpy(R, &B.vector);
-int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, &R.vector);
+int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, R);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @ 
 
 <<Compute $R \set \Sigma(R)$.>>=
-      gsl_vector_map(sigmoid, R, NULL);
+gsl_vector_map(sigmoid, R, NULL);
 @
-
+\subsection{Linear Algebra Computations}
 This is a
 \href{http://www.gnu.org/software/gsl/manual/html_node/Level-1-GSL-BLAS-Interface.html}{level
-  1 BLAS operation}.  This API computes $y \leftarrow \alpha x + y$.
+  1 BLAS operation}.  This API computes $y \set \alpha x + y$.
 <<API>>= 
-  int gsl_blas_daxpy (double alpha, const gsl_vector * x, gsl_vector * y)
+int gsl_blas_daxpy (double alpha, const gsl_vector * x, gsl_vector * y)
 @ 
 <<Compute $R \set R - Y$.>>=
-      gsl_blas_dapy(-1.0, &Y.vector, R);
+gsl_blas_daxpy(-1.0, &Y.vector, R);
 @
 
 <<Compute $R \set R + I(t)$.>>=
-  gsl_vector* I = gsl_vector_alloc(cparams->n);
-  gsl_vector_set_all(I, t);
-  gsl_vector_map(fill_input, I, cparams);
-  gsl_blas_dapy(1.0, I, R);
-  gsl_vector_free(I);
+gsl_vector* I = gsl_vector_alloc(cparams->n);
+gsl_vector_set_all(I, t);
+gsl_vector_map(fill_input, I, cparams);
+gsl_blas_daxpy(1.0, I, R);
+gsl_vector_free(I);
 @
 
 <<Compute $R \set R \circ T^{-1}$.>>=
-  gsl_vector_view T = gsl_vector_view_array(cparams->time_constant, cparams->n);
-  gsl_vector* Tinv = gsl_vector_alloc(cparams->n);
-  gsl_vector_memcpy(Tinv, &T.vector);
-  gsl_vector_map(invert, Tinv, NULL);
-  gsl_vector_map(hadamard, R, Tinv);
-  gsl_vector_free(Tinv);
+gsl_vector_view T = gsl_vector_view_array(cparams->time_constant, cparams->n);
+gsl_vector* Tinv = gsl_vector_alloc(cparams->n);
+gsl_vector_memcpy(Tinv, &T.vector);
+gsl_vector_map(invert, Tinv, NULL);
+gsl_vector_map(hadamard, R, Tinv);
+gsl_vector_free(Tinv);
 @
 
 <<Function>>=
@@ -132,42 +231,3 @@ double fill_input(double t, size_t i, void *params)
   return cparams->input(t, i, NULL);
 }
 @ 
-
-<<Function>>=
-void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
-{
-  for (int i = 0; i < x->size; i++)
-    gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
-}
-@
-
-<<Function>>= 
-double sigmoid(double x, i, void * params)
-{
-  return 1./(1. + exp(-x));
-}
-@ 
-
-<<Function>>= 
-double invert(double x, i, void * params)
-{
-  return 1./x;
-}
-@
-
-<<Function>>= 
-double hadamard(double x, i, void * params)
-{
-  gsl_vector *v = (gsl_vector *)params;
-  return x*gsl_vector_get(v, i);
-}
-@
-
-
-To advance the ODE we will use the same skeleton outlined
-\href{http://www.gnu.org/software/gsl/manual/html_node/Ordinary-Differential-Equations.html}{here}.
-
-
-
-
-

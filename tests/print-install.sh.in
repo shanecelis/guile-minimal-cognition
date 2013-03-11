@@ -1,0 +1,18 @@
+#!/bin/bash
+# print-install.sh.in
+set -e; # abort if anything fails
+cd @top_builddir@
+builddir="$(pwd)"
+make dist
+filename=`echo hello-emacsy*.tar.gz`
+dirname=$(basename $filename .tar.gz)
+tar xfz $filename
+cd $dirname
+./configure --prefix="$builddir/print-install"
+
+# Make sure it can be built without noweb and cleaned without removing
+# anything important.
+make
+make install
+find "$builddir/test-install"
+#rm -rf "$builddir/test-install"

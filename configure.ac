@@ -2,14 +2,17 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([hello-emacsy], [1.0], [bug-report@address])
+AC_INIT([minimal-cognition], [0.01], [bug-report@address])
 AC_CONFIG_AUX_DIR([support/build-aux])
+# Lies.
+#AM_INIT_GUILE_MODULE
 
 # We're going to use GNUMake and we're going to like it.
 AM_INIT_AUTOMAKE([-Wall foreign -Wno-portability])
 
 AC_CONFIG_MACRO_DIR([support/m4])
 # Checks for programs.
+AC_PROG_CC_C99
 AC_PROG_CC_C_O
 AC_PROG_LIBTOOL
 
@@ -64,5 +67,6 @@ AC_CONFIG_FILES([ Makefile
                   src/Makefile 
                   tests/Makefile 
                   tests/works-without-noweb.sh
+                  tests/print-install.sh
                   ])
 AC_OUTPUT

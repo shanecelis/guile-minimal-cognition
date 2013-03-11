@@ -1,13 +1,3 @@
-BUILT_SOURCES =
-include $(top_srcdir)/support/automake/noweb.am
-include $(top_srcdir)/support/automake/guile.am
-
-CLEANFILES=ctrnn.c.x
-
-if LATEXMK
-CLEANFILES+=ctrnn.paper.pdf
-endif
-
 dist-hook:
 	mv $(distdir)/*.pdf $(top_distdir)
 
@@ -15,32 +5,38 @@ dist-hook:
 	cat paper-wrapper.nw > $@
 	echo "\\input{$$(basename -s .nw $<)} \\end{document}" >> $@
 
-
-NOWEB_FILES = ctrnn.nw ctrnn.paper.nw
+CLEANFILES=ctrnn.c.x 
 EXTRA_DIST = ctrnn.paper.pdf
 
-if NOWEB
-EXTRA_DIST += $(NOWEB_FILES:.nw=.tex)
-BUILT_SOURCES += ctrnn.c 
-BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex)
-CLEANFILES += $(NOWEB_FILES:.nw=.tex) ctrnn.c 
-# Maybe I should call latexmk -C before removing the .tex files.
-endif
-
+NOWEB_FILES = ctrnn.nw ctrnn.paper.nw
+NOWEB_PRODUCTS = ctrnn.c ctrnn.h ctrnn.scm
+BUILT_SOURCES = 
+BUILT_SOURCES +=ctrnn.c.x
 #ctrnn-paper.tex ctrnn.tex
 # ctrnn.c.x
-# ctrnn.c.x : ctrnn.c
-# ctrnn.o : ctrnn.c.x
+ctrnn.c.x : ctrnn.c
+ctrnn.o : ctrnn.c.x
 
 if LATEXMK
 all-local : ctrnn.paper.pdf
+clean-local : clean-latexmk
+CLEANFILES+=ctrnn.paper.pdf
 endif
 
-lib_LTLIBRARIES = libctrnn.la
+lib_LTLIBRARIES = libguile-ctrnn.la
 
-AM_CFLAGS  = 
-libctrnn_la_LIBADD  = 
-libctrnn_la_LDFLAGS = 
-libctrnn_la_SOURCES = ctrnn.c
+AM_CFLAGS = $(GUILE_CFLAGS) $(GSL_CFLAGS) 
+libguile_ctrnn_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
+libguile_ctrnn_la_LDFLAGS = 
+libguile_ctrnn_la_SOURCES = ctrnn.c
+include_HEADERS = ctrnn.h
+
+guilectrnnmoduledir = `pkg-config guile-2.0 --variable=pkgdatadir`/site/ctrnn
+guilectrnnmodule_DATA = ctrnn.scm
+
+EXTRA_DIST += $(guilectrnnmodule_DATA)
 
 MAINTAINERCLEANFILES = Makefile.in config.h.in 
+
+include $(top_srcdir)/support/automake/noweb.am
+include $(top_srcdir)/support/automake/guile.am

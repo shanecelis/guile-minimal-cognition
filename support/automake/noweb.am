@@ -5,10 +5,19 @@ if NOWEB
 %.tex : %.nw
 	noweave -x -delay $< | cpif $@
 
-%.h %.c %.cpp : %.nw
-	notangle -R$@ $< | cpif $@
+%.scm %.h %.c %.cpp : %.nw 
+	notangle -L -R"file:$@" $< | cpif $@
+
+%.nw.files : %.nw
+	noroots $< | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
+
+BUILT_SOURCES += $(NOWEB_PRODUCTS)
+EXTRA_DIST += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
+BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
+CLEANFILES += $(NOWEB_PRODUCTS)
+
 else
-%.h %.c %.cpp %.tex : %.nw
+%.scm %.h %.c %.cpp %.tex : %.nw
 	$(warning Warning: unable to update $@ from changed $< without noweb.)
 endif
 
@@ -16,11 +25,12 @@ if LATEXMK
 %.pdf: %.tex
 	TEXINPUTS=$(srcdir):$(imagesdir): latexmk -f -halt-on-error -c-style-errors -pdf -p $<; true
 
-# clean-local:
-# 	latexmk -c
+clean-latexmk: 
+	for file in $(NOWEB_FILES:.nw=.tex); do \
+		test -f $$file && latexmk -C $$file && rm -f $$file; \
+	done; true
 
-# distclean-local:
-# 	latexmk -C
+
 else
 %.pdf : %.tex
 	$(warning Warning: unable to update $@ from changed $< without latexmk.)
