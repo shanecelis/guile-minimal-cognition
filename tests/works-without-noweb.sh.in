@@ -3,8 +3,8 @@
 set -e; # abort if anything fails
 cd @top_builddir@
 make dist
-filename=`echo hello-emacsy*.tar.gz`
-dirname=$(basename $filename .tar.gz)
+dirname=@DISTDIR@
+filename=$dirname.tar.gz
 tar xfz $filename
 cd $dirname
 ./configure --enable-noweb=no --enable-latexmk=no

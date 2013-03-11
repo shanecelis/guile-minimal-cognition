@@ -5,22 +5,18 @@ dist-hook:
 	cat paper-wrapper.nw > $@
 	echo "\\input{$$(basename -s .nw $<)} \\end{document}" >> $@
 
-CLEANFILES=ctrnn.c.x 
+CLEANFILES = ctrnn.c.x 
 EXTRA_DIST = ctrnn.paper.pdf
 
 NOWEB_FILES = ctrnn.nw ctrnn.paper.nw
 NOWEB_PRODUCTS = ctrnn.c ctrnn.h ctrnn.scm
-BUILT_SOURCES = 
-BUILT_SOURCES +=ctrnn.c.x
-#ctrnn-paper.tex ctrnn.tex
-# ctrnn.c.x
+BUILT_SOURCES = ctrnn.c.x
 ctrnn.c.x : ctrnn.c
-ctrnn.o : ctrnn.c.x
 
 if LATEXMK
 all-local : ctrnn.paper.pdf
 clean-local : clean-latexmk
-CLEANFILES+=ctrnn.paper.pdf
+CLEANFILES += ctrnn.paper.pdf
 endif
 
 lib_LTLIBRARIES = libguile-ctrnn.la
@@ -31,7 +27,7 @@ libguile_ctrnn_la_LDFLAGS =
 libguile_ctrnn_la_SOURCES = ctrnn.c
 include_HEADERS = ctrnn.h
 
-guilectrnnmoduledir = `pkg-config guile-2.0 --variable=pkgdatadir`/site/ctrnn
+guilectrnnmoduledir = $(GUILE_SITE_LIB)/ctrnn
 guilectrnnmodule_DATA = ctrnn.scm
 
 EXTRA_DIST += $(guilectrnnmodule_DATA)

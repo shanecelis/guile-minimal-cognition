@@ -1,11 +1,11 @@
 #!/bin/bash
 # print-install.sh.in
 set -e; # abort if anything fails
-cd @top_builddir@
-builddir="$(pwd)"
+builddir="@top_builddir@"
+cd $builddir
 make dist
-filename=`echo hello-emacsy*.tar.gz`
-dirname=$(basename $filename .tar.gz)
+dirname=@DISTDIR@
+filename=$dirname.tar.gz
 tar xfz $filename
 cd $dirname
 ./configure --prefix="$builddir/print-install"
@@ -14,5 +14,5 @@ cd $dirname
 # anything important.
 make
 make install
-find "$builddir/test-install"
+find "$builddir/print-install"
 #rm -rf "$builddir/test-install"

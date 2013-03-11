@@ -41,6 +41,16 @@ AM_CONDITIONAL([LATEXMK], [test x"$LATEXMK_CHECK" = xyes && test x"$enable_latex
 # Checks for libraries.
 PKG_CHECK_MODULES([GUILE], [guile-2.0])
 PKG_CHECK_MODULES([GSL], [gsl])
+
+if test "$prefix" == "/usr/local"; then
+   GUILE_SITE_LIB="$(pkg-config guile-2.0 --variable=pkgdatadir)/site";
+else
+   GUILE_SITE_LIB="$prefix/share/guile/site";
+fi
+AC_SUBST(GUILE_SITE_LIB)
+
+AC_SUBST(DISTDIR, ["${PACKAGE_TARNAME}-${PACKAGE_VERSION}"])
+
 #PKG_CHECK_MODULES([EMACSY], [libemacsy])
 #AX_CHECK_GLUT
 # The autoconf macro does not prefer these frameworks over the
