@@ -2,11 +2,15 @@
 #SUFFIXES += .nw .tex .pdf
 
 if NOWEB
-%.tex : %.nw
+BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
+%.tex : %.nw 
 	noweave -x -delay $< | cpif $@
 
-%.scm %.h %.c %.cpp : %.nw 
+%.h %.c %.cpp : %.nw 
 	notangle -L -R"file:$@" $< | cpif $@
+
+%.test.scm %.scm : %.nw $(BOILERPLATE)
+	notangle -R"file:$@" $^ | cpif $@
 
 %.nw.files : %.nw
 	noroots $< | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
@@ -29,10 +33,10 @@ clean-latexmk:
 		test -f $$file && latexmk -C $$file && rm -f $$file; \
 	done; true
 
-
 else
 %.pdf : %.tex
 	$(warning Warning: unable to update $@ from changed $< without latexmk.)
 
+clean-latexmk:
 endif
 

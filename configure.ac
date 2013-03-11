@@ -38,6 +38,8 @@ if test x"$LATEXMK_CHECK" != x"yes" ; then
 fi
 AM_CONDITIONAL([LATEXMK], [test x"$LATEXMK_CHECK" = xyes && test x"$enable_latexmk" = xyes])
 
+GUILE_PROGS
+
 # Checks for libraries.
 PKG_CHECK_MODULES([GUILE], [guile-2.0])
 PKG_CHECK_MODULES([GSL], [gsl])
@@ -75,6 +77,7 @@ AC_SUBST(automakedir, ['${top_srcdir}/support/automake'])
 AC_CONFIG_HEADERS([src/config.h])
 AC_CONFIG_FILES([ Makefile
                   src/Makefile 
+                  src/minimal-cognition/Makefile 
                   tests/Makefile 
                   tests/works-without-noweb.sh
                   tests/print-install.sh

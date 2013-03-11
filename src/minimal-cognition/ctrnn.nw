@@ -124,13 +124,23 @@ void init_ctrnn(void)
 #endif
 }
 @
-
 <<file:ctrnn.scm>>=
-(define-module (ctrnn)
+(define-module (minimal-cognition ctrnn)
  #:use-module (ice-9 optargs))
 
-(load-extension "./libguile-ctrnn.dylib" "init_ctrnn")
+;(load-extension "libguile-ctrnn.dylib" "init_ctrnn")
+(load-extension "libguile-ctrnn.la" "init_ctrnn")
+(export ctrnn-step)
 @
+
+Now let's test it.
+
+<<test>>=
+(check (ctrnn-step 1 2 3 4) => #f)
+@ 
+
+
+
 
 \appendix
 \section{Appendix}
@@ -231,3 +241,15 @@ double fill_input(double t, size_t i, void *params)
   return cparams->input(t, i, NULL);
 }
 @ 
+\subsection{Test}
+<<file:ctrnn.test.scm>>=
+;; ctrnn.test.scm
+(use-modules (minimal-cognition ctrnn))
+(eval-when (compile load eval)
+           ;; Some trickery so we can test private procedures.
+           (module-use! (current-module) (resolve-module '(minimal-cognition ctrnn))))
+
+<<+ Test Preamble>>
+<<test>>
+<<+ Test Postscript>>
+@
