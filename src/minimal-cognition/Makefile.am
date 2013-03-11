@@ -38,6 +38,3 @@ ctrnn.c.x : ctrnn.c
 
 dist-hook:
 	mv $(distdir)/*.pdf $(top_distdir)
-
-%.paper.nw : %.nw
-	(cat paper-wrapper.nw;	echo "\\input{$$(basename -s .nw $<)} \\end{document}") | cpif $@

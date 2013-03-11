@@ -15,6 +15,10 @@ BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 %.nw.files : %.nw
 	noroots $< | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
 
+%.paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
+	(cat $(top_srcdir)/support/noweb/paper-wrapper.nw;	echo "\\input{$$(basename -s .nw $<)} \\end{document}") | cpif $@
+
+
 EXTRA_DIST += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
 BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
 CLEANFILES += $(NOWEB_PRODUCTS)
