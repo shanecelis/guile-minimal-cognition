@@ -1,0 +1,219 @@
+% fode.nw
+\section{First Order Dynamics}
+
+Beer uses a first order dynamics for his simulation.  This means there
+is no momentum.
+
+\begin{align*}
+  \dot{x_1} &= k_{11}(E_1 - E_2) \\
+  \dot{y_1} &= 0 \\
+  \dot{x_2} &= k_{21} \\
+  \dot{y_2} &= k_{22} \\
+  &\mathrel{\makebox[\widthof{=}]{\vdots}} \\
+  \dot{x_n} &= k_{n1} \\
+  \dot{y_n} &= k_{n2} 
+\end{align*}
+
+\noindent The effectors $E_1$ and $E_2$ are controlled by the CTRNN.
+The agent's position is determined by $x_1$.  There are $n - 1$
+objects that are falling, excluding the agent, and $n$ objects total.  
+
+<<file:fode.h>>=
+typedef struct fode_params {
+  int n;
+  const double *k;
+  double (*effector)(double t, int i, struct fode_params *params);
+  void * user;
+} fode_params;
+@ 
+
+<<Function>>=
+int dot_fode(double t, const double *y, double *dydt, void *params)
+{
+  fode_params *pparams = (fode_params *) params;
+  <<Compute $R \set K$.>>
+  <<Compute $R_1 \set R_1 (E_1 - E_2)$.>>
+  return GSL_SUCCESS;
+}
+@ 
+
+<<Function>>=
+int step_fode(double *ty, double h, fode_params *params)
+{
+  double *y = ty + 1;
+  double *t = ty;
+  gsl_odeiv2_system sys = {&dot_fode, 
+                           NULL, 
+                           params->n * 2, params};
+  gsl_odeiv2_driver * d = 
+         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rkf45,
+                                        1e-2, 1e-6, 0.0);
+
+  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+     
+  gsl_odeiv2_driver_free (d);
+  return status;
+}
+@ 
+
+\subsection{Scheme}
+
+<<Primitive>>=
+SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
+            (SCM ty, SCM h, SCM n, SCM k, SCM effector_func),
+            "Move fode forward a single time step.")
+{
+#define GET_DOUBLE_HANDLE(scm_var, double_array) \
+  scm_t_array_handle scm_var ## _handle; \
+  scm_array_get_handle(scm_var, &scm_var ## _handle); \
+  double* double_array = scm_array_handle_f64_writable_elements(&scm_var ## _handle);
+
+#define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
+  scm_t_array_handle scm_var ## _handle; \
+  scm_array_get_handle(scm_var, &scm_var ## _handle); \
+  const double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
+
+#define RELEASE_HANDLE(scm_var) \
+  scm_array_handle_release(&scm_var ## _handle);
+
+  GET_DOUBLE_HANDLE(ty, ty_array);
+  GET_READ_DOUBLE_HANDLE(k, k_array);
+
+  fode_params params;
+  params.n = scm_to_int(n);
+  params.k = k_array;
+  if (scm_is_false(effector_func)) {
+    params.effector = NULL;
+    params.user = NULL;
+  } else {
+    params.effector = call_scm_effector_func;
+    params.user = effector_func;
+  }
+  step_fode(ty_array, scm_to_double(h), &params);
+
+  RELEASE_HANDLE(ty);
+  RELEASE_HANDLE(k);
+  return SCM_BOOL_T;
+}
+@ 
+
+<<Function>>=
+double call_scm_effector_func(double t, int i, struct fode_params *params)
+{
+  SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
+  return scm_to_double(res);
+}
+@ 
+
+<<file:fode.scm>>=
+(define-module (minimal-cognition fode)
+ #:use-module (ice-9 optargs)
+ #:use-module (oop goops))
+
+;; This can erroneously report a "file not found" error when
+;; there is a symbol missing.
+(load-extension "libguile-fode.la" "init_fode")
+
+<<Class>>
+
+<<Procedure>>
+@
+
+
+<<Procedure>>=
+(define*-public (make-fode n #:optional (effector-func #f))
+  (list
+   n
+   (make-typed-array 'f64 1.0 (* 2 n))
+   effector-func))
+@ 
+
+<<Procedure>>=
+(define-public (step-fode yt h fode)
+  (apply step-fode*
+         yt
+         h
+         fode))
+@ 
+
+<<test>>=
+(check (procedure? step-fode) => #t)
+(define yt #f64(0. 0. 0.))
+(define h 0.1)
+(define p1 (make-fode 1))
+(check (step-fode yt h p1) => #t)
+(check yt => #f64(0.1 0. 0.))
+
+(define (effector2 t i) (display "effector called!") (if (= i 1) 1. 0.))
+(define p2 (make-fode 1 effector2))
+(check (step-fode yt h p1) => #t)
+(check yt => #f64(0.1 0. 0.))
+
+@ 
+
+
+
+
+\appendix
+\section{Appendix}
+\subsection{Miscellaneous}
+<<Include GSL headers.>>=
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_odeiv2.h>
+#include <gsl/gsl_blas.h>
+@
+
+\subsection{File Layout}
+<<file:fode.c>>=
+#include <libguile.h>
+#ifndef SCM_MAGIC_SNARFER 
+#include "fode.h"
+#include "math.h"
+<<Include GSL headers.>>
+#endif
+
+<<Function>>
+
+<<Primitive>>
+
+<<Initialize>>
+@ 
+
+
+<<Compute $R \set K$.>>=
+gsl_vector_view Rview = gsl_vector_view_array(dydt, pparams->n * 2);
+gsl_vector* R = &Rview.vector;
+gsl_vector_const_view K = gsl_vector_const_view_array(pparams->k, pparams->n * 2);
+gsl_vector_memcpy(R, &K.vector);
+@
+
+<<Compute $R_1 \set R_1 (E_1 - E_2)$.>>=
+if (pparams->effector)
+  gsl_vector_set(R, 0, gsl_vector_get(R, 0) * (pparams->effector(t, 1, pparams) - pparams->effector(t, 2, pparams)));
+@
+
+<<Initialize>>=
+void init_fode(void)
+{
+#ifndef SCM_MAGIC_SNARFER 
+#include "fode.c.x" 
+#endif
+}
+@
+
+
+\subsection{Test}
+<<file:fode.test.scm>>=
+;; fode.test.scm
+(use-modules (minimal-cognition fode)
+             (float-equality))
+(eval-when (compile load eval)
+           ;; Some trickery so we can test private procedures.
+           (module-use! (current-module) (resolve-module '(minimal-cognition fode))))
+
+<<+ Test Preamble>>
+<<test>>
+<<+ Test Postscript>>
+@

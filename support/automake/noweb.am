@@ -4,16 +4,19 @@
 if NOWEB
 BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 %.tex : %.nw 
-	noweave -x -delay $< | cpif $@
+	noweave -x -delay $^ | cpif $@
 
-%.h %.c %.cpp : %.nw 
-	notangle -L -R"file:$@" $< | cpif $@
+%.h : %.nw $(BOILERPLATE)
+	notangle -R"file:$@" $^ | cpif $@
+
+%.test.c %.c %.cpp : %.nw $(BOILERPLATE)
+	notangle -c -L -R"file:$@" $^ | cpif $@
 
 %.test.scm %.scm : %.nw $(BOILERPLATE)
 	notangle -R"file:$@" $^ | cpif $@
 
 %.nw.files : %.nw
-	noroots $< | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
+	noroots $^ | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
 
 %.paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
 	(cat $(top_srcdir)/support/noweb/paper-wrapper.nw;	echo "\\input{$$(basename -s .nw $<)} \\end{document}") | cpif $@

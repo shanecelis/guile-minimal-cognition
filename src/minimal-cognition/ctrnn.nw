@@ -1,5 +1,5 @@
 % -*- mode: Noweb; noweb-code-mode: c-mode -*-
-\section{CTRNN}
+\section{CTRNN} \label{blah}
 
 We want to use a Continuous Time Recurrent Neural Network (CTRNN).  A
 CTRNN can be described by the following Ordinary Differential Equation
@@ -16,13 +16,26 @@ post-synaptic node, $\sigma(x)$ is the sigmoidal function $\sigma(x) =
 1/(1 + e^{-x})$, $\theta_i$ is the bias, and $I_i(t)$ is the input if
 any at time $t$.  See
 \href{http://en.wikipedia.org/wiki/Recurrent_neural_network#Continuous-time_RNN}{wikipedia}
-for more details.
+for more details.  It can be expressed more compactly using matrices.
 
- It can be expressed more compactly using matrices.
+\begin{align} \label{dot_y1}
+  T\circ\dot{Y} =& -Y + \Sigma(W\,Y - \Theta) + I(t) 
+\end{align}
+
+Beer, however, uses a slightly different form than the one shown above
 
 \begin{align}
-  T\circ\dot{Y} =& -Y + \Sigma(W\,Y - \Theta) + I(t)
+  \tau_i \dot{y_i} =& -y_i + \sum_{j=1}^n w_{ji}\sigma(g_j(y_j + \theta_j)) + I_i(t)
 \end{align}
+
+\noindent where $g_j$ is the gain.  In matrix form it is
+
+\begin{align}
+  T\circ\dot{Y} =& -Y + W\,\sigma(G \circ(Y +
+ \Theta)) + I(t) \text{.}\label{dot_y2}
+\end{align}
+
+\subsection{Implementation}
 
 The implementation will use the
 \href{http://www.gnu.org/software/gsl/}{GNU Scientific Library (GSL)}
@@ -37,45 +50,24 @@ typedef struct ctrnn_params {
   double *weights; /* n x n real numbers */
   double *time_constant; /* n real numbers */
   double *bias; /* n real numbers */
+  double *gain;
   double (*input)(double t, int i, struct ctrnn_params *params);
   void   *user;
 } ctrnn_params;
 
-int dot_y(double t, const double *y, double *dydt, void *params);
+//int dot_y(double t, const double *y, double *dydt, void *params);
+int dot_y1(double t, const double *y, double *dydt, void *params);
+int dot_y2(double t, const double *y, double *dydt, void *params);
 
 int step_ctrnn(double *ty, double h, ctrnn_params *params);
 @ 
- 
-<<file:ctrnn.c>>=
-#include <libguile.h>
-#ifndef SCM_MAGIC_SNARFER 
-#include "ctrnn.h"
-#include "math.h"
-<<Include GSL headers.>>
-#endif
-
-/* private prototypes */
-typedef double (*functor)(double f, size_t i, void* params);
-
-void gsl_vector_map(functor f, gsl_vector *x, void *params);
-double sigmoid(double x, size_t i, void * params);
-double fill_input(double t, size_t i, void *params);
-double invert(double x, size_t i, void * params);
-double hadamard(double x, size_t i, void * params);
-
-<<Function>>
-
-<<Primitive>>
-
-<<Initialize>>
-@ 
-
-First thing we'd like to do is compute the $\dot{Y}$ vector for our
-given CTRNN, and we won't be using a method that requires the
-Jacobian.
+  
+First thing we'd like to do is compute the $\dot{Y}$ \ref{dot_y1}
+vector for our given CTRNN, and we won't be using a method that
+requires the Jacobian.
 
 <<Function>>=
-int dot_y(double t, const double *y, double *dydt, void *params)
+int dot_y1(double t, const double *y, double *dydt, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
   <<Compute $R \set W \, Y - \Theta$.>>
@@ -85,10 +77,24 @@ int dot_y(double t, const double *y, double *dydt, void *params)
   <<Compute $R \set R \circ T^{-1}$.>>
   return GSL_SUCCESS;
 }
-
 @ 
 
-To advance the ODE we will use the same skeleton outlined
+<<Function>>=
+int dot_y2(double t, const double *y, double *dydt, void *params)
+{
+  ctrnn_params *cparams = (ctrnn_params *) params;
+  <<Compute $R \set Y + \Theta$.>>
+  <<Compute $R \set G \circ R$.>>
+  <<Compute $R \set \sigma(R)$.>>
+  <<Compute $R \set W \, R$.>>
+  <<Compute $R \set R - Y$.>>
+  <<Compute $R \set R + I(t)$.>>
+  <<Compute $R \set R \circ T^{-1}$.>>
+  return GSL_SUCCESS;
+}
+@ 
+
+To advance the ODE we will use the same skeleton outlined 
 \href{http://www.gnu.org/software/gsl/manual/html_node/ODE-Example-programs.html}{here}.
 
 <<Function>>=
@@ -96,7 +102,7 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 {
   double *y = ty + 1;
   double *t = ty;
-  gsl_odeiv2_system sys = {&dot_y, 
+  gsl_odeiv2_system sys = {&dot_y1, 
                            NULL, 
                            params->n, params};
   gsl_odeiv2_driver * d = 
@@ -113,9 +119,9 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 \subsection{Again, But With More Scheme!}
 
 <<Primitive>>=
-SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 7, 0, 0,
+SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
-             SCM time_constant, SCM bias, SCM input_func),
+             SCM time_constant, SCM bias, SCM gain, SCM input_func),
             "Move a CTRNN forward a single time step.")
 {
 #define GET_DOUBLE_HANDLE(scm_var, double_array) \
@@ -123,28 +129,48 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 7, 0, 0,
   scm_array_get_handle(scm_var, &scm_var ## _handle); \
   double* double_array = scm_array_handle_f64_writable_elements(&scm_var ## _handle);
 
+#define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
+  scm_t_array_handle scm_var ## _handle; \
+  scm_array_get_handle(scm_var, &scm_var ## _handle); \
+  double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
+
 #define RELEASE_HANDLE(scm_var) \
   scm_array_handle_release(&scm_var ## _handle);
 
   GET_DOUBLE_HANDLE(ty, ty_array);
-  GET_DOUBLE_HANDLE(weights, w_array);
-  GET_DOUBLE_HANDLE(time_constant, tc_array);
-  GET_DOUBLE_HANDLE(bias, b_array);
+  GET_READ_DOUBLE_HANDLE(weights, w_array);
+  GET_READ_DOUBLE_HANDLE(time_constant, tc_array);
+  GET_READ_DOUBLE_HANDLE(bias, b_array);
+  GET_READ_DOUBLE_HANDLE(gain, g_array);
 
   ctrnn_params params;
   params.n = scm_to_int(n);
   params.weights = w_array;
   params.time_constant = tc_array;
   params.bias = b_array;
-  params.input = NULL;
-  params.user = NULL;
+  params.gain = g_array;
+  if (scm_is_false(input_func)) {
+    params.input = NULL;
+    params.user = NULL;
+  } else {
+    params.input = call_scm_input_func;
+    params.user = input_func;
+  }
   step_ctrnn(ty_array, scm_to_double(h), &params);
 
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(weights);
   RELEASE_HANDLE(time_constant);
   RELEASE_HANDLE(bias);
-  return SCM_BOOL_F;
+  return SCM_BOOL_T;
+}
+@ 
+
+<<Function>>=
+double call_scm_input_func(double t, int i, struct ctrnn_params *params)
+{
+  SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
+  return scm_to_double(res);
 }
 @ 
 
@@ -162,6 +188,8 @@ void init_ctrnn(void)
  #:use-module (oop goops))
 
 ;;(load-extension "libguile-ctrnn.dylib" "init_ctrnn")
+;; This is erroneously reported as a "file not found" error when
+;; there is a symbol missing.
 (load-extension "libguile-ctrnn.la" "init_ctrnn")
 
 <<Class>>
@@ -178,6 +206,7 @@ void init_ctrnn(void)
   (weights ctrnn)
   (time-constant ctrnn)
   (bias ctrnn)
+  (gain ctrnn)
   (input-func ctrnn)))
 @ 
 
@@ -186,146 +215,40 @@ void init_ctrnn(void)
  (weights #:getter weights #:init-keyword #:weights)
  (time-constant #:getter time-constant #:init-keyword #:time-constant)
  (bias #:getter bias #:init-keyword #:bias)
+ (gain #:getter gain #:init-keyword #:gain)
  (input-func #:getter input-func #:init-keyword #:input-func))
 @ 
 
 <<Procedure>>=
- (define-public (make-n-ctrnn n)
+ (define*-public (make-n-ctrnn n #:optional (input-func #f))
   (make <ctrnn> #:weights (make-typed-array 'f64 0.0 (* n n))
                 #:time-constant (make-typed-array 'f64 1.0 n)
                 #:bias (make-typed-array 'f64 0.0 n)
-                #:input-func (lambda (i) 0.0)
+                #:gain (make-typed-array 'f64 1.0 n)
+                #:input-func input-func
   )
  )
 @ 
 
-Now let's test it.
-
+Now let's test it.  
 <<test>>=
 (define y #f64(0.0 0.1))
 (check (procedure? make-n-ctrnn) => #t)
 (define c (make-n-ctrnn 1))
 (check (time-constant c) => #f64(1.0))
 (check (array-dimensions (time-constant c)) => '(1))
-(check (step-ctrnn y 0.01 c) => #f)
+(check (step-ctrnn y 0.01 c) => #t)
 (check y (=> =?) #f64(0.01 0.10398))
 @ 
 
+Let's test whether the input will make a difference.
 
-
+<<test>>=
+(set! y #f64(0.0 0.1))
+(define c2 (make-n-ctrnn 1 (lambda (t i) 1.)))
+(check (step-ctrnn y 0.01 c2) => #t)
+(check y (=> (negate =?)) #f64(0.01 0.10398))
+@ 
 
 \appendix
-\section{Appendix}
-
-\subsection{Miscellaneous}
-<<Include GSL headers.>>=
-#include <gsl/gsl_errno.h>
-#include <gsl/gsl_matrix.h>
-#include <gsl/gsl_vector.h>
-#include <gsl/gsl_odeiv2.h>
-#include <gsl/gsl_blas.h>
-@
-
-\subsection{Map and Functors}
-
-<<Function>>=
-void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
-{
-  for (int i = 0; i < x->size; i++)
-    gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
-}
-
-double sigmoid(double x, size_t i, void * params)
-{
-  return 1./(1. + exp(-x));
-}
-
-double invert(double x, size_t i, void * params)
-{
-  return 1./x;
-}
-
-double hadamard(double x, size_t i, void * params)
-{
-  gsl_vector *v = (gsl_vector *)params;
-  return x*gsl_vector_get(v, i);
-}
-@
-
-This is a
-\href{http://www.gnu.org/software/gsl/manual/html_node/Level-2-GSL-BLAS-Interface.html}{level
-  2 GSL BLAS operation} and we need to
-\href{http://www.gnu.org/software/gsl/manual/html_node/Matrix-views.html}{make
-  a matrix view} and a
-\href{http://www.gnu.org/software/gsl/manual/html_node/Vector-views.html}{vector
-  view}.
-
-\begin{align}
-  R \set& W\, Y - \Theta
-\end{align}
-
-<<Compute $R \set W \, Y - \Theta$.>>=
-gsl_matrix_view W = gsl_matrix_view_array(cparams->weights, cparams->n, cparams->n);
-gsl_vector_view B = gsl_vector_view_array(cparams->bias, cparams->n); // $\Theta$
-gsl_vector_const_view Y = gsl_vector_const_view_array(y, cparams->n);
-gsl_vector_view Rview = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
-gsl_vector* R = &Rview.vector;
-gsl_vector_memcpy(R, &B.vector);
-int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, R);
-if (err != GSL_SUCCESS) return GSL_EBADFUNC;
-@ 
-
-<<Compute $R \set \Sigma(R)$.>>=
-gsl_vector_map(sigmoid, R, NULL);
-@
-\subsection{Linear Algebra Computations}
-This is a
-\href{http://www.gnu.org/software/gsl/manual/html_node/Level-1-GSL-BLAS-Interface.html}{level
-  1 BLAS operation}.  This API computes $y \set \alpha x + y$.
-<<API>>= 
-int gsl_blas_daxpy (double alpha, const gsl_vector * x, gsl_vector * y)
-@ 
-<<Compute $R \set R - Y$.>>=
-gsl_blas_daxpy(-1.0, &Y.vector, R);
-@
-
-<<Compute $R \set R + I(t)$.>>=
-gsl_vector* I = gsl_vector_alloc(cparams->n);
-gsl_vector_set_all(I, t);
-gsl_vector_map(fill_input, I, cparams);
-gsl_blas_daxpy(1.0, I, R);
-gsl_vector_free(I);
-@
-
-<<Compute $R \set R \circ T^{-1}$.>>=
-gsl_vector_view T = gsl_vector_view_array(cparams->time_constant, cparams->n);
-gsl_vector* Tinv = gsl_vector_alloc(cparams->n);
-gsl_vector_memcpy(Tinv, &T.vector);
-gsl_vector_map(invert, Tinv, NULL);
-gsl_vector_map(hadamard, R, Tinv);
-gsl_vector_free(Tinv);
-@
-
-<<Function>>=
-double fill_input(double t, size_t i, void *params)
-{
-  ctrnn_params *cparams = (ctrnn_params *) params;
-  if (cparams->input)
-    return cparams->input(t, i, params);
-  else
-    return 0.;
-}
-@ 
-\subsection{Test}
-<<file:ctrnn.test.scm>>=
-;; ctrnn.test.scm
-(use-modules (minimal-cognition ctrnn)
-             (float-equality))
-(eval-when (compile load eval)
-           ;; Some trickery so we can test private procedures.
-           (module-use! (current-module) (resolve-module '(minimal-cognition ctrnn))))
-
-<<+ Test Preamble>>
-<<test>>
-<<+ Test Postscript>>
-@
+\input{ctrnn.appendix}
