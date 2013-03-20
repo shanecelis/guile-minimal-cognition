@@ -108,11 +108,12 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 <<file:fode.scm>>=
 (define-module (minimal-cognition fode)
  #:use-module (ice-9 optargs)
- #:use-module (oop goops))
+ #:use-module (oop goops)
+ #:use-module (infix))
 
 ;; This can erroneously report a "file not found" error when
 ;; there is a symbol missing.
-(load-extension "libguile-fode.la" "init_fode")
+(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-fode" "init_fode")
 
 <<Class>>
 
@@ -129,11 +130,28 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 @ 
 
 <<Procedure>>=
+(define-public (make-fode-state fode)
+   (make-typed-array 'f64 0.0 (1+ (* 2 (car fode))))
+)
+@ 
+
+<<Procedure>>=
 (define-public (step-fode yt h fode)
   (apply step-fode*
          yt
          h
          fode))
+@ 
+
+<<Procedure>>=
+(define-public (object-x ty i)
+"Return the x coordinate of object 0 is the agent, object 1 is the first object, etc."
+  (: ty @ ((2 * i) + 1))        
+)
+
+(define-public (object-y ty i)
+"Return the y coordinate of object 0 is the agent, object 1 is the first object, etc."
+  (1+ (object-x ty i)))
 @ 
 
 <<test>>=
@@ -142,12 +160,12 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 (define h 0.1)
 (define p1 (make-fode 1))
 (check (step-fode yt h p1) => #t)
-(check yt => #f64(0.1 0. 0.))
+(check yt => #f64(0.1 0.1 0.1))
 
 (define (effector2 t i) (display "effector called!") (if (= i 1) 1. 0.))
 (define p2 (make-fode 1 effector2))
 (check (step-fode yt h p1) => #t)
-(check yt => #f64(0.1 0. 0.))
+(check yt => #f64(0.2 0.2 0.2))
 
 @ 
 

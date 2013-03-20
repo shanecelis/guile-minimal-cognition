@@ -1,0 +1,251 @@
+\section{Vision}
+
+The agents in Beer's work have vision sensors that detect the distance
+of an object.  This code will implement a vision detector in 2D for
+circles.  
+
+
+<<file:vision.scm>>=
+(define-module (minimal-cognition vision)
+ ; #:use-module ((vector-math) #:select ((=? . vector=?)))
+  #:use-module (vector-math)
+  #:use-module (infix)
+  )
+
+<<Procedure>>
+@ 
+
+\subsection{Before one can see, one must calculate} 
+
+
+Mathmatically, the problem is relatively simple.  Given a point of
+origin for the ``eye'' $(x_1, y_1)$ and its angle $\theta$ with
+respect to the $x$-axis, find its intersection with a circle of radius
+$r$ centered at $(x_2, y_2)$.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.5\textwidth]{vision-problem} 
+  \caption[Short Label]{\label{vision-problem}Problem.}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.5\textwidth]{vision-problem-reform} 
+  \caption[Short Label]{\label{vision-problem-reform}Problem reformulated.}
+\end{figure}
+
+Let's solve our easier reformulated problem first.  This will have as
+inputs $(x_2', y_2')$ and radius $r$.  
+ 
+<<Procedure>>=
+(define (intersection-with-circle* x2* y2* r)
+  (if (> (abs y2*) r)
+      ;; We're not touching the circle.
+      'no-intersection
+      (let ((a <<Solve for $a$.>>))
+        (- x2* a))))
+@ 
+
+All we have to do is solve for $a$ in our diagram in
+\cref{vision-problem-reform}.
+
+\begin{align}
+  r^2 &= y_2'^2 + a^2 \\
+  a^2 &= r^2 - y_2'^2 \\
+  a &= \sqrt{r^2 - y_2'^2}
+\end{align}
+
+<<Solve for $a$.>>=
+  (- (* r r) (* y2* y2*))
+@
+
+Now, let's solve the more general problem shown in
+\cref{vision-problem}.
+
+<<Procedure>>=
+(define-public (intersection-with-circle x1 y1 theta x2 y2 r)
+  (let* ((p1 (vector x1 y1))
+         (p2 (vector x2 y2))
+         (R <<Make a rotation matrix.>>)
+         (p2* (matrix. R (vector- p2 p1)))
+         (x3 (intersection-with-circle* (: p2* @ 0) (: p2* @ 1) r))
+         (p3 (vector x3 0)))
+    (if (eq? x3 'no-intersection)
+        x3
+        (vector+ (matrix. (matrix-transpose R) p3) p1))))
+@ 
+  
+<<Make a rotation matrix.>>=
+(let ((s (sin theta))
+      (c (cos theta)))
+ `#(#(,c ,s)
+    #(,(- s) ,c)))
+@
+
+Now let's test it out on the simplest case.
+
+<<test>>=
+(define x1 0)
+(define y1 0)
+(define x2 2)
+(define y2 0)
+(define theta 0)
+(define r 1)
+
+(check (intersection-with-circle* x2 y2 r) => 1)
+(check (intersection-with-circle x1 y1 theta x2 y2 r) (=> fe:=?) #(1 0))
+@ 
+
+If we shift all positions over by 1 in the $x$ direction, it shouldn't matter.
+
+<<test>>=
+(incr! x1)
+(incr! x2)
+
+(check (intersection-with-circle x1 y1 theta x2 y2 r) (=> fe:=?) #(2 0))
+@ 
+
+Likewise for $y$.
+
+<<test>>=
+(incr! y1)
+(incr! y2)
+
+(check (intersection-with-circle x1 y1 theta x2 y2 r) (=> fe:=?) #(2 1))
+@ 
+
+Great. Now, let's reset everything and try changing $\theta$.
+
+<<test>>=
+(set! x1 0)
+(set! y1 0)
+(set! x2 2)
+(set! y2 0)
+(set! theta (/ pi 2))
+(set! r 1)
+
+(check (intersection-with-circle x1 y1 theta x2 y2 r) => 'no-intersection)
+@ 
+
+Let's set $\theta$ back to 0, and we'll confirm that the position of
+intersection changes relatively the way we expect.  This also affirms
+that I have not defined my rotation matrix such that $\theta$ actually
+representes $-\theta$.
+
+<<test>>=
+(set! theta 0)
+(check (intersection-with-circle x1 y1 theta x2 y2 r) (=> fe:=?) #(1 0))
+(set! theta 0.1)
+(define up-right (intersection-with-circle x1 y1 theta x2 y2 r))
+(set! theta -0.1)
+(define down-right (intersection-with-circle x1 y1 theta x2 y2 r))
+;; Check the y's.
+(check-true (: up-right @ 1 > 0))
+(check-true (: down-right @ 1 < 0))
+;; Check the x's.
+(check-true (: up-right @ 0 > 1))
+(check-true (: down-right @ 0 > 1))
+@ 
+
+\subsection{Calculations will let you see}
+
+\epigraph{I don't calculate for numbers; I calculate for in\emph{sight}.}{Anonymous (emphasis mine)}
+
+Now we want to implement a sight function that we can feed to our
+CTRNN.  The input function to the CTRNN accepts a time and an index
+parameter [[(input t i)]].  However, to construct our sight input, we
+have to know and choose a number of things: the positions of the agent
+and objects, the number of sensors, where the sensors are placed, and
+what direction they face, the maximum range of the sensors, and the
+agent diameter.
+
+For the sake of simplicity let's assume all sensors are placed in a
+bilaterally symmetric way with uniform radial spacing.  Thus, the
+parameters we need to define are the total angle of vision $\Theta$,
+and the number of objects $m$, number of sensors $n$, agent diameter
+$d$, object radius $r$, and max distance $D$.
+
+The $\theta_i$ is the angle with respect to the $x$-axis for sensor
+$i$.  Since they're uniformed spaced, $\theta_{i + 1} = \theta_i +
+\Delta_\theta$ or $\theta_i = i \Delta_\theta + \theta_0$.
+
+<<Procedure>>=
+(define-public (make-vision-input ty m n d r D Theta max-output)
+  (let* ((theta_1 <<Find $\theta_1$.>>)
+         (delta_theta (- (/ Theta (1- n)))))
+    (define (distance-for-object i j) ;; sensor i, object j
+      (let* ((theta_i (+ (* i delta_theta) theta_1))
+             (point (intersection-with-circle
+                     (: ty @ 1) ;; agent x
+                     (: ty @ 2) ;; agent y
+                     theta_i
+                     (: ty @ ((2 * (j + 1)) + 1)) ;; object x
+                     (: ty @ ((2 * (j + 1)) + 2)) ;; object y
+                     r)))
+        (if (eq? point 'no-intersection)
+            D
+            (min D (- (vector-norm (vector- point (vector
+                                             (: ty @ 1) ;; agent x
+                                             (: ty @ 2) ;; agent y 
+                                             )))
+                (/ d 2))))))
+    (lambda (t i)
+      (if (>= i n)
+          ;; Return zero to non-sensor nodes.
+          0.
+          ;; Return the smallest distance remapping from [0, D] -> [0, max-output]
+          (* (/ max-output D)
+             (apply min (map (lambda (j) (distance-for-object i j))
+                             (range 0 (1- m))) ;; zero based index for objects.
+                            )) 
+          ))))
+@ 
+
+<<Find $\theta_1$.>>=
+(+ (/ Theta 2) (/ pi 2))
+@ 
+
+Great, now let's basically do the same tests but with this new form.
+
+<<test>>=
+(define t 0.)
+(set! x1 0)
+(set! y1 0)
+(set! x2 5)
+(set! y2 0)
+(define x3 -4)
+(define y3 0)
+
+(define ty (vector t x1 y1 x2 y2 x3 y3))
+(define m 2) ;; objects
+(define n 3) ;; sensors
+(define Theta pi) ;; field of view
+(define d 2) ;; diameter of agent
+(set!   r 1) ;; radius of objects
+(define D 10) ;; max sight distance
+
+
+(define vision-input (make-vision-input ty m n d r D Theta D))
+(check (vision-input t 0) (=> fe:=?) 2)
+(check (vision-input t 1) (=> fe:=?) D)
+(check (vision-input t 2) (=> fe:=?) 3)
+(check (vision-input t 4) (=> fe:=?) 0)
+@ 
+
+
+\subsection{Test}
+<<file:vision.test.scm>>=
+;; vision.test.scm
+(use-modules (minimal-cognition vision)
+             ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
+             (emacsy util)
+             )
+(eval-when (compile load eval)
+           ;; Some trickery so we can test private procedures.
+           (module-use! (current-module) (resolve-module '(minimal-cognition vision))))
+
+<<+ Test Preamble>>
+<<test>>
+<<+ Test Postscript>>
+@

@@ -149,6 +149,7 @@ double fill_input(double t, size_t i, void *params)
 ;; ctrnn.test.scm
 (use-modules (minimal-cognition ctrnn)
              (float-equality))
+
 (eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.
            (module-use! (current-module) (resolve-module '(minimal-cognition ctrnn))))

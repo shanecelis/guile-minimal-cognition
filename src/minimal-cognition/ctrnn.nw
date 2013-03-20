@@ -1,4 +1,3 @@
-% -*- mode: Noweb; noweb-code-mode: c-mode -*-
 \section{CTRNN} \label{blah}
 
 We want to use a Continuous Time Recurrent Neural Network (CTRNN).  A
@@ -185,12 +184,13 @@ void init_ctrnn(void)
 <<file:ctrnn.scm>>=
 (define-module (minimal-cognition ctrnn)
  #:use-module (ice-9 optargs)
- #:use-module (oop goops))
+ #:use-module (oop goops)
+ #:use-module ((vector-math) #:select (vector-move!*))
+ #:use-module (emacsy util))
 
-;;(load-extension "libguile-ctrnn.dylib" "init_ctrnn")
 ;; This is erroneously reported as a "file not found" error when
 ;; there is a symbol missing.
-(load-extension "libguile-ctrnn.la" "init_ctrnn")
+(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-ctrnn" "init_ctrnn")
 
 <<Class>>
 
@@ -202,7 +202,7 @@ void init_ctrnn(void)
  (step-ctrnn* 
   yt
   h 
-  (car (array-dimensions (time-constant ctrnn)))
+  (n ctrnn)
   (weights ctrnn)
   (time-constant ctrnn)
   (bias ctrnn)
@@ -212,22 +212,44 @@ void init_ctrnn(void)
 
 <<Class>>=
 (define-class <ctrnn> ()
- (weights #:getter weights #:init-keyword #:weights)
+ (n #:getter n #:init-keyword #:n)
+ (weights #:accessor weights #:init-keyword #:weights)
  (time-constant #:getter time-constant #:init-keyword #:time-constant)
  (bias #:getter bias #:init-keyword #:bias)
  (gain #:getter gain #:init-keyword #:gain)
- (input-func #:getter input-func #:init-keyword #:input-func))
+ (input-func #:accessor input-func #:init-keyword #:input-func))
+
+ (export <ctrnn> input-func)
 @ 
 
 <<Procedure>>=
  (define*-public (make-n-ctrnn n #:optional (input-func #f))
-  (make <ctrnn> #:weights (make-typed-array 'f64 0.0 (* n n))
+  (make <ctrnn> #:n n
+                #:weights (make-typed-array 'f64 0.0 (* n n))
                 #:time-constant (make-typed-array 'f64 1.0 n)
                 #:bias (make-typed-array 'f64 0.0 n)
                 #:gain (make-typed-array 'f64 1.0 n)
                 #:input-func input-func
   )
  )
+
+(define* (vector-map! f v #:optional (i 0))
+  "Changes the vector in place."
+  (if (< i (generalized-vector-length v))
+      (begin
+        (generalized-vector-set! v i (f (generalized-vector-ref v i) i))
+        (vector-map! f v (1+ i)))
+      v))
+
+(define-public (randomize-ctrnn! ctrnn)
+ (define (random-weight)
+  (- 5 (random 10.)))
+ (vector-map! (lambda (x i)
+               (random-weight)) (weights ctrnn)))
+
+(define-public (make-ctrnn-state ctrnn)
+ (make-typed-array 'f64 0.0 (1+ (* 2 (n ctrnn))))
+  )
 @ 
 
 Now let's test it.  
@@ -248,6 +270,60 @@ Let's test whether the input will make a difference.
 (define c2 (make-n-ctrnn 1 (lambda (t i) 1.)))
 (check (step-ctrnn y 0.01 c2) => #t)
 (check y (=> (negate =?)) #f64(0.01 0.10398))
+@ 
+
+\subsection{Evolving the CTRNN}
+
+To evolve the CTRNN using something like NSGA-II, we'll need to be
+able to convert a genome to into a CTRNN, and though not strictly
+necessary, it'd be nice to be able to convert a CTRNN into a genome.
+
+<<Procedure>>=
+(define-public (make-genome-for-n-ctrnn n)
+  (let ((m ;; number of genes
+         (+ 
+          (* n n) ;;weights
+          n ;; time-constants
+          n ;; bias
+          n ;; gain
+          
+          )))
+   (make-typed-array 'f64 0. m)))
+@ 
+
+Let's make a procedure to randomize the genome.  We'll assume the gene
+values are in $[-1, 1]$.
+
+<<Procedure>>=
+(define-public (randomize-genome! genome)
+ (define (random-gene)
+   (- 1. (random 2.)))
+ (vector-map! (lambda (x i)
+               (random-gene)) genome))
+@
+
+Now, let's convert this genome to a ctrnn.
+
+<<Procedure>>=
+(define-public (genome->ctrnn genome ctrnn)
+  (define (remap a b vector)
+    (vector-map! (lambda (x i)
+                   (+ a (* (/ (+ x 1.0) 2) (- b a)))) vector))
+  (let ((n (n ctrnn))
+        (i 0))
+    (remap -5 5 (vector-move!* (weights ctrnn) 0 (1- (* n n)) genome i (1- (incr! i (* n n)))))
+   
+    (remap 1 2 (vector-move!* (time-constant ctrnn) 0 (1- n) genome i (1- (incr! i n))))
+    (remap -10 0 (vector-move!* (bias ctrnn)          0 (1- n) genome i (1- (incr! i n))))
+    (remap 1 5 (vector-move!* (gain ctrnn)          0 (1- n) genome i (1- (incr! i n)))))
+  ctrnn)
+@ 
+
+<<test>>=
+(define genome (make-random-genome-for-n-ctrnn 3))
+(define c3 (make-n-ctrnn 3))
+
+(genome->ctrnn genome c3)
 @ 
 
 \appendix

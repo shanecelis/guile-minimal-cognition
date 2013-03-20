@@ -1,0 +1,4 @@
+* Before meeting
+- [X] vision
+- [ ] evolvable
+- [ ] genes -> phenotype

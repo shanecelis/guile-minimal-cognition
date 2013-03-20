@@ -1,9 +1,9 @@
 
 EXTRA_DIST = ctrnn.paper.pdf
 
-NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn.appendix.nw fode.nw
+NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn.appendix.nw fode.nw vision.nw
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
-	               fode.h fode.c fode.scm fode.test.scm
+	               fode.h fode.c fode.scm fode.test.scm vision.scm vision.test.scm
 BUILT_SOURCES = ctrnn.c.x fode.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
@@ -38,8 +38,8 @@ ctrnn_test_LDADD   = libguile-ctrnn.la
 ctrnn_test_SOURCES = ctrnn.test.c
 
 #TESTS_ENVIRONMENT = $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -x $(libdir)
-TESTS_ENVIRONMENT = DYLD_LIBRARY_PATH=$(srcdir) $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme 
-TESTS = ctrnn.test.scm fode.test.scm
+TESTS_ENVIRONMENT = DYLD_LIBRARY_PATH=$(srcdir) $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -L $(top_srcdir)/.. -L $(top_srcdir)/../noweb-emacsy 
+TESTS = ctrnn.test.scm fode.test.scm vision.test.scm
 
 # TESTS_ENVIRONMENT = 
 # TESTS += ctrnn.test
