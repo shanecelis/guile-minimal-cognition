@@ -321,17 +321,126 @@ Great, now let's basically do the same tests but with this new form.
 The above works; however, it's not efficient enough. So we're going to
 rewrite it in C.
 
-<<file:vision.c>>=
+<<file:vision.h>>=
 #include "ctrnn.h"
+<<ctrnn-appendix:Include GSL headers.>>
+<<Structure>>
+<<Macro>>
+
+void setup_vision_args(struct vision_args *args);
+void teardown_vision_args(struct vision_args *args);
+double vision_input (double t, int i, struct ctrnn_params *params);
+@ 
+
+<<file:vision.c>>=
+#include "vision.h"
 #include "math.h"
-<<ctrnn.appendix:Include GSL headers.>>
 
-
+int intersection_with_circle(double x1, double y1, 
+                             gsl_matrix * R, 
+                             double x2, double y2, 
+                             double r, 
+                             double  *x3, double *y3);
 <<Function>>
+@ 
+
+Well, rewriting isn\'t fun, but this is an inner loop where we do need
+the speed.  We need a structure to hold all our arguments.
+
+<<Structure>>=
+struct vision_args {
+  double *ty; // time and state variables
+  size_t m; // number of objects
+  size_t n; // number of sensors
+  double d; //agent diameter
+  double r; // object radius
+  double D; // max distance
+  double Theta; // total angle of vision
+  double max_output;
+  gsl_matrix **R; // Rotation matrices for each sensor.
+};
+@
+
+<<Function>>=
+void setup_vision_args(struct vision_args *args) 
+{
+  double theta_1 = args->Theta / 2. + M_PI_2;
+  double delta_theta = -args->Theta / (args->n - 1);
+  if (args->R == NULL) {
+    args->R = malloc(args->n * sizeof(gsl_matrix *));
+    for (int i = 0; i < args->n; i++) {
+      double theta_i = i * delta_theta - theta_1;
+      args->R[i] = gsl_matrix_alloc(2, 2);
+      <<Setup rotation matrix.>>
+    }
+  }
+}
+@ 
+
+<<Function>>=
+void teardown_vision_args(struct vision_args *args) 
+{
+  if (args->R != NULL) {
+    for (int i = 0; i < args->n; i++) {
+      gsl_matrix_free(args->R[i]);
+    }
+    free(args->R);
+    args->R = NULL;
+  }
+}
+@ 
+
+\begin{align}
+  R_i &= \begin{bmatrix}
+       cos(\theta_i) & sin(\theta_i) \\
+       -sin(\theta_i) & cos(\theta_i) \\
+       \end{bmatrix}
+\end{align}
+
+<<Setup rotation matrix.>>=
+    double c = cos(theta_i);
+    double s = sin(theta_i);
+    gsl_matrix_set(args->R[i], 0, 0, c);
+    gsl_matrix_set(args->R[i], 0, 1, s);
+    gsl_matrix_set(args->R[i], 1, 0, -s);
+    gsl_matrix_set(args->R[i], 1, 1, c);
+@ 
+
+<<Function>>=
 double vision_input (double t, int i, struct ctrnn_params *params)
 {
- 
+  struct vision_args* args = (struct vision_args *) params->user;
+  if (i >= args->n)
+    return 0.;
+  double min_distance = args->D;
+  for (int j = 1; j <= args->m; j++) {
+    double distance;
+    <<$distance \set $ distance between sensor i and object j.>>
+    min_distance = MIN(min_distance, distance);
+  }
 }
+@ 
+
+<<Macro>>=
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+@ 
+
+<<$distance \set $ distance between sensor i and object j.>>=
+double x3, y3;
+intersection_with_circle(OBJECT_X(args->ty, 0),
+                         OBJECT_Y(args->ty, 0),
+                         args->R[i],
+                         OBJECT_X(args->ty, j),
+                         OBJECT_Y(args->ty, j),
+                         args->r,
+                         &x3, &y3);
+distance = sqrt(x3 * x3 + y3 * y3);
+@
+
+<<Macro>>=
+#define OBJECT_X(ty, i) ty[2 * i + 1]
+#define OBJECT_Y(ty, i) ty[2 * i + 2]
 @ 
 
 <<Function>>=
@@ -353,16 +462,19 @@ int intersection_with_circle(double x1, double y1,
                              double r, 
                              double  *x3, double *y3)
 {
-  static gsl_vector* p1 = gsl_vector_alloc(2);
-  static gsl_vector* p2 = gsl_vector_alloc(2);
-  static gsl_vector* p3 = gsl_vector_alloc(2);
+  static gsl_vector* p1 = NULL, *p2p, *p2, *p3;
+  if (p1 == NULL) { 
+    p1 = gsl_vector_alloc(2);
+    p2 = gsl_vector_alloc(2);
+    p2p = gsl_vector_alloc(2);
+    p3 = gsl_vector_alloc(2);
+  }
   gsl_vector_set(p1, 0, x1);
   gsl_vector_set(p1, 1, y1);
 
   gsl_vector_set(p2, 0, x2);
   gsl_vector_set(p2, 1, y2);
 
-  gsl_vector p2p;
   <<Compute $p_2 \set R\ (p_2 - p_1)$.>>
   int err;
   err = intersection_with_circle_specific(gsl_vector_get(p2p, 0),
@@ -371,8 +483,8 @@ int intersection_with_circle(double x1, double y1,
   if (err)
     return err;
   else {
-    gsl_vector_set(p3, 0, x3);
-    gsl_vector_set(p3, 1, 0);
+    gsl_vector_set(p3, 0, *x3);
+    gsl_vector_set(p3, 1, 0.);
     <<Compute $p_3 \set R^T\ p_3 + p_1$.>>
     *x3 = gsl_vector_get(p3, 0);
     *y3 = gsl_vector_get(p3, 1);

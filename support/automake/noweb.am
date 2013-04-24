@@ -7,7 +7,7 @@ BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 	noweave -x -delay $^ | cpif $@
 
 %.h : %.nw $(BOILERPLATE)
-	notangle -R"file:$@" $^ | cpif $@
+	notangle $(NOTANGLE_H_FLAGS) -R"file:$@" $^ | cpif $@
 
 %.test.c %.c %.cpp : %.nw $(BOILERPLATE)
 	notangle $(NOTANGLE_C_FLAGS)  -R"file:$@" $^ | cpif $@

@@ -1,9 +1,9 @@
 
 EXTRA_DIST = ctrnn.paper.pdf vision.paper.pdf
 
-NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn.appendix.nw fode.nw vision.nw
+NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn-appendix.nw fode.nw vision.nw
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
-	               fode.h fode.c fode.scm fode.test.scm vision.scm vision.test.scm vision.c
+	               fode.h fode.c fode.scm fode.test.scm vision.scm vision.test.scm vision.c vision.h
 BUILT_SOURCES = ctrnn.c.x fode.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
@@ -17,6 +17,7 @@ endif
 clean-local : clean-latexmk
 
 NOTANGLE_C_FLAGS = -c -L -markup "$(top_srcdir)/bin/namespace-markup"
+NOTANGLE_H_FLAGS = -L -markup "$(top_srcdir)/bin/namespace-markup"
 lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la
 
 AM_CFLAGS = $(GUILE_CFLAGS) $(GSL_CFLAGS) 
@@ -47,7 +48,7 @@ TESTS = ctrnn.test.scm fode.test.scm vision.test.scm
 
 # src_NOWEB = ctrnn.c 
 # #ctrnn.scm ctrnn.h
-# ctrnn_c_SOURCES = ctrnn.nw ctrnn.appendix.nw
+# ctrnn_c_SOURCES = ctrnn.nw ctrnn-appendix.nw
 
 include $(top_srcdir)/support/automake/noweb.am
 include $(top_srcdir)/support/automake/guile.am
@@ -56,11 +57,12 @@ include $(top_srcdir)/support/automake/guile.am
 ctrnn.c.x : ctrnn.c
 fode.c.x : fode.c
 
-ctrnn.c : ctrnn.nw ctrnn.appendix.nw $(BOILERPLATE)
-ctrnn.test.scm : ctrnn.nw ctrnn.appendix.nw $(BOILERPLATE)
-ctrnn.test.c : ctrnn.nw ctrnn.appendix.nw $(BOILERPLATE)
+ctrnn.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
+ctrnn.test.scm : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
+ctrnn.test.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
 
-vision.c : vision.nw ctrnn.appendix.nw $(BOILERPLATE)
+vision.c : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
+vision.h : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
 
 
 dist-hook:

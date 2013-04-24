@@ -328,4 +328,5 @@ Now, let's convert this genome to a ctrnn.
 @ 
 
 \appendix
-\input{ctrnn.appendix}
+\input{ctrnn-appendix}
+
