@@ -10,10 +10,10 @@ BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 	notangle -R"file:$@" $^ | cpif $@
 
 %.test.c %.c %.cpp : %.nw $(BOILERPLATE)
-	notangle -c -L -R"file:$@" $^ | cpif $@
+	notangle $(NOTANGLE_C_FLAGS)  -R"file:$@" $^ | cpif $@
 
 %.test.scm %.scm : %.nw $(BOILERPLATE)
-	notangle -R"file:$@" $^ | cpif $@
+	notangle $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^ | cpif $@
 
 %.nw.files : %.nw
 	noroots $^ | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@

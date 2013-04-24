@@ -320,7 +320,8 @@ Now, let's convert this genome to a ctrnn.
 @ 
 
 <<test>>=
-(define genome (make-random-genome-for-n-ctrnn 3))
+(define genome (make-genome-for-n-ctrnn 3))
+(randomize-genome! genome)
 (define c3 (make-n-ctrnn 3))
 
 (genome->ctrnn genome c3)

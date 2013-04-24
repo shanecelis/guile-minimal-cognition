@@ -13,6 +13,7 @@
 \usepackage{cleveref}
 
 \input{/Users/shane/.latexrc}
+\pagestyle{noweb}
 \begin{document}
 
 %\input{$FILE$}

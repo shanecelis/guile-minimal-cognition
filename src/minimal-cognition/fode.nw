@@ -46,7 +46,8 @@ int step_fode(double *ty, double h, fode_params *params)
                            NULL, 
                            params->n * 2, params};
   gsl_odeiv2_driver * d = 
-         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rkf45,
+         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rk2,
+                                              //gsl_odeiv2_step_rkf45,
                                         1e-2, 1e-6, 0.0);
 
   int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
@@ -151,7 +152,8 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 
 (define-public (object-y ty i)
 "Return the y coordinate of object 0 is the agent, object 1 is the first object, etc."
-  (1+ (object-x ty i)))
+ (: ty @ ((2 * i) + 2))        
+)
 @ 
 
 <<test>>=
