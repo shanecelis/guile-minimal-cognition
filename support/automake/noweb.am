@@ -4,7 +4,7 @@
 if NOWEB
 BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 %.tex : %.nw 
-	noweave -x -delay $^ | cpif $@
+	noweave $(NOWEAVE_FLAGS) -x -delay $^ | cpif $@
 
 %.h : %.nw $(BOILERPLATE)
 	notangle $(NOTANGLE_H_FLAGS) -R"file:$@" $^ | cpif $@

@@ -76,6 +76,7 @@ AC_SUBST(automakedir, ['${top_srcdir}/support/automake'])
 # Output files.
 AC_CONFIG_HEADERS([src/config.h])
 AC_CONFIG_FILES([ Makefile
+                  bin/runtests
                   src/Makefile 
                   src/minimal-cognition/Makefile 
                   tests/Makefile 
@@ -83,3 +84,4 @@ AC_CONFIG_FILES([ Makefile
                   tests/print-install.sh
                   ])
 AC_OUTPUT
+chmod a+x bin/runtests

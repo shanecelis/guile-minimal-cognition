@@ -258,9 +258,15 @@ Now let's test it.
 (check (procedure? make-n-ctrnn) => #t)
 (define c (make-n-ctrnn 1))
 (check (time-constant c) => #f64(1.0))
+(check (bias c) => #f64(0.0))
+(check (gain c) => #f64(1.0))
+(check (weights c) => #f64(1.0))
 (check (array-dimensions (time-constant c)) => '(1))
 (check (step-ctrnn y 0.01 c) => #t)
-(check y (=> =?) #f64(0.01 0.10398))
+(check y (=> =?) #f64(0.01 0.12))
+(define y #f64(0.0 0.1))
+(check (step-ctrnn y 0.01 c) => #t)
+(check y (=> =?) #f64(0.01 0.12))
 @ 
 
 Let's test whether the input will make a difference.
@@ -269,7 +275,7 @@ Let's test whether the input will make a difference.
 (set! y #f64(0.0 0.1))
 (define c2 (make-n-ctrnn 1 (lambda (t i) 1.)))
 (check (step-ctrnn y 0.01 c2) => #t)
-(check y (=> (negate =?)) #f64(0.01 0.10398))
+(check y (=> =?) #f64(0.01 0.12))
 @ 
 
 \subsection{Evolving the CTRNN}

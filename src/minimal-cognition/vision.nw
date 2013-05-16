@@ -1,44 +1,48 @@
 \section{Vision}
+%\epigraph{I don't calculate for numbers; I calculate for insight.}{(I wish I knew.)}
+\epigraph{The purpose of computing is insight, not numbers.}{Richard Hamming}
 
 The agents in Beer's work have vision sensors that detect the distance
-of an object.  This code will implement a vision detector in 2D for
-circles.  
+of an object.  This code implements a vision detector in 2D for
+circles.  The principal file is [[vision.scm]], which includes some
+modules and defines some procedures.\footnote{Style note: I use the
+  singular ``Procedure'' rather than ``Procedures'' as the chunk
+  name because it is reused repeatedly to define each procedure.}
 
 <<file:vision.scm>>=
 (define-module (minimal-cognition vision)
- ; #:use-module ((vector-math) #:select ((=? . vector=?)))
   #:use-module (vector-math)
   #:use-module (infix)
   #:use-module (ice-9 optargs)
-  #:use-module (minimal-cognition fode)
-  )
+  #:use-module (minimal-cognition fode))
 
 <<Procedure>>
 @ 
 
-\subsection{Before one can see, one must calculate} 
+\subsection{I was blind, but calculation let me see} 
 
-Mathmatically, the problem is relatively simple.  Given a point of
+Mathematically, the problem is relatively simple.  Given a point of
 origin for the ``eye'' $(x_1, y_1)$ and its angle $\theta$ with
 respect to the $x$-axis, find its intersection with a circle of radius
 $r$ centered at $(x_2, y_2)$.
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.5\textwidth]{vision-problem} 
-  \caption[Short Label]{\label{vision-problem}Problem.}
+  \caption[Short Label]{\label{vision-problem}General problem.}
 \end{figure}
 
 
 Let's solve our easier reformulated problem first.  This will have as
-inputs $(x_2', y_2')$ and radius $r$.  
+inputs $(x_2', y_2')$, radius $r$, and we'll assume the origin $(x_1,
+y_1) = (0, 0)$.
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.5\textwidth]{vision-problem-reform} 
-  \caption[Short Label]{\label{vision-problem-reform}Problem reformulated.}
+  \caption[Short Label]{\label{vision-problem-reform}General problem
+    reformulated to a specific problem.}
 \end{figure}
-
  
 <<Procedure>>=
 (define (intersection-with-circle* x2* y2* r)
@@ -74,7 +78,7 @@ into the specific problem.
        \end{bmatrix}
 \end{align}
 
-Then if we find the point of intersection using the specific problem
+Then we find the point of intersection using the specific problem
 solution $(x_3', y_3')$, we convert it back to the general problem
 solution $(x_3, y_3)$.
 
@@ -93,7 +97,7 @@ The procedure [[intersetion-with-circle]] solves the general problem.
          (x3 (intersection-with-circle* (: p2* @ 0) (: p2* @ 1) r))
          (p3 (vector x3 0)))
     (if (eq? x3 'no-intersection)
-        x3
+        'no-intersection
         (vector+ (matrix. (matrix-transpose R) p3) p1))))
 @ 
   
@@ -171,8 +175,6 @@ representes $-\theta$.
 
 \subsection{Calculations will let you see}
 
-%\epigraph{I don't calculate for numbers; I calculate for insight.}{(I wish I knew.)}
-\epigraph{The purpose of computing is insight, not numbers.}{Richard Hamming}
 
 Now we want to implement a sight function that we can feed to our
 CTRNN.  The input function to the CTRNN accepts a time and an index
@@ -318,12 +320,12 @@ Great, now let's basically do the same tests but with this new form.
 
 \subsection{Again, but in C}
 
-The above works; however, it's not efficient enough. So we're going to
+The above works; however, it's not fast enough. So we're going to
 rewrite it in C.
 
 <<file:vision.h>>=
 #include "ctrnn.h"
-<<ctrnn-appendix:Include GSL headers.>>
+<<ctrnn:Include GSL headers.>>
 <<Structure>>
 <<Macro>>
 

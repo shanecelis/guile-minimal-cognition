@@ -39,7 +39,6 @@ double call_scm_input_func(double t, int i, struct ctrnn_params *params);
 
 <<Function>>=
 void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
-
 {
   for (int i = 0; i < x->size; i++)
     gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
@@ -56,7 +55,6 @@ double invert(double x, size_t i, void * params)
 }
 
 double hadamard(double x, size_t i, void * params)
-
 {
   gsl_vector *v = (gsl_vector *)params;
   return x*gsl_vector_get(v, i);
@@ -131,8 +129,6 @@ gsl_blas_daxpy(1.0, &Y.vector, R);
 gsl_vector_view G = gsl_vector_view_array(cparams->gain, cparams->n);
 gsl_vector_map(hadamard, R, &G.vector);
 @
-
-
 
 <<Function>>=
 double fill_input(double t, size_t i, void *params)

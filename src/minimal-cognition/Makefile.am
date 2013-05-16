@@ -1,7 +1,7 @@
 
 EXTRA_DIST = ctrnn.paper.pdf vision.paper.pdf
 
-NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn-appendix.nw fode.nw vision.nw
+NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn-appendix.nw fode.nw vision.nw 
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
 	               fode.h fode.c fode.scm fode.test.scm vision.scm vision.test.scm vision.c vision.h
 BUILT_SOURCES = ctrnn.c.x fode.c.x
@@ -16,8 +16,10 @@ vision.paper.pdf: vision.paper.tex vision.tex
 endif
 clean-local : clean-latexmk
 
-NOTANGLE_C_FLAGS = -c -L -markup "$(top_srcdir)/bin/namespace-markup"
-NOTANGLE_H_FLAGS = -L -markup "$(top_srcdir)/bin/namespace-markup"
+MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn --"
+NOWEAVE_C_FLAGS = $(MARKUP_FLAGS)
+NOTANGLE_C_FLAGS = -c -L $(MARKUP_FLAGS)
+NOTANGLE_H_FLAGS = -L $(MARKUP_FLAGS)
 lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la
 
 AM_CFLAGS = $(GUILE_CFLAGS) $(GSL_CFLAGS) 
@@ -40,7 +42,7 @@ ctrnn_test_LDADD   = libguile-ctrnn.la
 ctrnn_test_SOURCES = ctrnn.test.c
 
 #TESTS_ENVIRONMENT = $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -x $(libdir)
-TESTS_ENVIRONMENT = DYLD_LIBRARY_PATH=$(srcdir) $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -L $(top_srcdir)/.. -L $(top_srcdir)/../noweb-emacsy 
+TESTS_ENVIRONMENT = $(top_builddir)/bin/runtests
 TESTS = ctrnn.test.scm fode.test.scm vision.test.scm
 
 # TESTS_ENVIRONMENT = 
