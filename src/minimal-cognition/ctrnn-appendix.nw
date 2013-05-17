@@ -80,6 +80,12 @@ int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, R);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @ 
 
+<<Compute $R \set W \, R$.>>=
+int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, R, 0.0, R);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+@ 
+
+
 <<Setup matrices.>>=
 gsl_matrix_view W = gsl_matrix_view_array(cparams->weights, cparams->n, cparams->n);
 gsl_vector_view B = gsl_vector_view_array(cparams->bias, cparams->n); // $\Theta$
@@ -169,3 +175,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 @ 
+
+<<Weird testing.>>=
+/* why is this not working. */
+@

@@ -116,8 +116,6 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 ;; there is a symbol missing.
 (load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-fode" "init_fode")
 
-<<Class>>
-
 <<Procedure>>
 @
 

@@ -477,8 +477,8 @@ int intersection_with_circle(double x1, double y1,
   gsl_vector_set(p2, 0, x2);
   gsl_vector_set(p2, 1, y2);
 
-  <<Compute $p_2 \set R\ (p_2 - p_1)$.>>
   int err;
+  <<Compute $p_2 \set R\ (p_2 - p_1)$.>>
   err = intersection_with_circle_specific(gsl_vector_get(p2p, 0),
                                           gsl_vector_get(p2p, 1),
                                           r, x3);
@@ -494,6 +494,21 @@ int intersection_with_circle(double x1, double y1,
   }
 }
 @ 
+
+<<Compute $p_2 \set R\ (p_2 - p_1)$.>>=
+  // Compute $p_2 \set (p_2 - p_1)$. 
+  err = gsl_blas_daxpy(-1.0, p1, p2);
+  if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2, 0.0, p2);
+  if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+@
+
+<<Compute $p_3 \set R^T\ p_3 + p_1$.>>=
+err = gsl_blas_dgemv (CblasTrans, 1.0, R, p3, 0.0, p3);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+err = gsl_blas_daxpy(1.0, p1, p3);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+@
 
 \subsection{Test}
 <<file:vision.test.scm>>=

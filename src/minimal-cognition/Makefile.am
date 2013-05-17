@@ -1,23 +1,27 @@
 
-EXTRA_DIST = ctrnn.paper.pdf vision.paper.pdf
+EXTRA_DIST = ctrnn-paper.pdf vision-paper.pdf
 
-NOWEB_FILES = ctrnn.nw ctrnn.paper.nw ctrnn-appendix.nw fode.nw vision.nw 
+NOWEB_FILES = ctrnn.nw ctrnn-paper.nw ctrnn-appendix.nw fode.nw vision.nw 
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
-	               fode.h fode.c fode.scm fode.test.scm vision.scm vision.test.scm vision.c vision.h
+	               fode.h fode.c fode.scm fode.test.scm vision.scm \
+                 vision.test.scm vision.c vision.h
 BUILT_SOURCES = ctrnn.c.x fode.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
 if LATEXMK
-all-local : ctrnn.paper.pdf vision.paper.pdf
-CLEANFILES += ctrnn.paper.pdf vision.paper.pdf
+all-local : ctrnn-paper.pdf vision-paper.pdf
+CLEANFILES += ctrnn-paper.pdf vision-paper.pdf
 
-ctrnn.paper.pdf: ctrnn.paper.tex ctrnn.tex
-vision.paper.pdf: vision.paper.tex vision.tex
+ctrnn.tex: ctrnn.nw ctrnn-appendix.nw
+ctrnn-paper.pdf: ctrnn-paper.tex ctrnn.tex ctrnn-appendix.tex
+vision-paper.pdf: vision-paper.tex vision.tex
 endif
 clean-local : clean-latexmk
 
 MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn --"
-NOWEAVE_C_FLAGS = $(MARKUP_FLAGS)
+#MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl --"
+#WARN_NOTANGLE_FLAGS = -W 
+NOWEAVE_FLAGS = $(MARKUP_FLAGS)
 NOTANGLE_C_FLAGS = -c -L $(MARKUP_FLAGS)
 NOTANGLE_H_FLAGS = -L $(MARKUP_FLAGS)
 lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la
@@ -27,10 +31,9 @@ libguile_ctrnn_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
 libguile_ctrnn_la_SOURCES = ctrnn.c vision.c
 include_HEADERS = ctrnn.h 
 
-AM_CFLAGS = $(GUILE_CFLAGS) $(GSL_CFLAGS) 
 libguile_fode_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
 libguile_fode_la_SOURCES = fode.c
-include_HEADERS = fode.h 
+include_HEADERS += fode.h 
 
 MAINTAINERCLEANFILES = Makefile.in config.h.in 
 

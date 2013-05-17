@@ -4,26 +4,37 @@
 if NOWEB
 BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
 %.tex : %.nw 
-	noweave $(NOWEAVE_FLAGS) -x -delay $^ | cpif $@
+	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -index $^ | cpif $@
+
+#	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -index $^ | cpif $@
+
+#	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -x $^ | cpif $@
+
 
 %.h : %.nw $(BOILERPLATE)
-	notangle $(NOTANGLE_H_FLAGS) -R"file:$@" $^ | cpif $@
+	$(AM_V_GEN) warn-notangle -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_H_FLAGS) -R"file:$@" $^ 
 
 %.test.c %.c %.cpp : %.nw $(BOILERPLATE)
-	notangle $(NOTANGLE_C_FLAGS)  -R"file:$@" $^ | cpif $@
+	$(AM_V_GEN) warn-notangle -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_C_FLAGS)  -R"file:$@" $^
 
 %.test.scm %.scm : %.nw $(BOILERPLATE)
-	notangle $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^ | cpif $@
+	$(AM_V_GEN)	warn-notangle -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^
+
+all.defs: $(NOWEB_DEFS)
+	$(AM_V_GEN)	sort -u $^ | cpif $@
+
+%.defs: %.nw
+	$(AM_V_GEN) nodefs $< > $@
 
 %.nw.files : %.nw
-	noroots $^ | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
+	$(AM_V_GEN) noroots $^ | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
 
-%.paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
-	(cat $(top_srcdir)/support/noweb/paper-wrapper.nw;	echo "\\input{$$(basename -s .nw $<)} \\end{document}") | cpif $@
+%-paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
+	$(AM_V_GEN) (cat $(top_srcdir)/support/noweb/paper-wrapper.nw |	perl -pe "s/\\@FILE\\@/$$(basename -s .nw $<)/;") | cpif $@
 
-
+NOWEB_DEFS = $(NOWEB_FILES:.nw=.defs)
 EXTRA_DIST += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
-BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
+BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
 CLEANFILES += $(NOWEB_PRODUCTS)
 
 else
@@ -33,7 +44,13 @@ endif
 
 if LATEXMK
 %.pdf: %.tex
-	TEXINPUTS=$(srcdir):$(imagesdir): latexmk -f -halt-on-error -c-style-errors -pdf -p $<; true
+	$(AM_V_GEN)	TEXINPUTS=$(srcdir):$(imagesdir): pdflatex -shell-escape -halt-on-error $< &> $$(basename $<).log || (cat $$(basename $<).log; false)
+	noindex $<
+	$(AM_V_GEN) TEXINPUTS=$(srcdir):$(imagesdir): pdflatex -shell-escape -halt-on-error $< &> $$(basename $<).log || (cat $$(basename $<).log; false)
+
+# $(AM_V_GEN)  latexmk -quiet -f -g -pdf $< &> $<.log || cat $<.log
+# noindex $<
+# $(AM_V_GEN) TEXINPUTS=$(srcdir):$(imagesdir): latexmk -quiet -f -g -pdf $< &> $<.log || cat $<.log
 
 clean-latexmk: 
 	for file in $(NOWEB_FILES:.nw=.tex); do \

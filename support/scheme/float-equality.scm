@@ -26,3 +26,7 @@
 (define-method (=? a b . rest)
   #f)
 
+(define-method (=? (tolerance <number>))
+  (lambda (a b)
+    (=? a b tolerance)))
+

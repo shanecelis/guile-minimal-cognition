@@ -1,5 +1,4 @@
 \documentclass{article} 
-\usepackage{noweb} 
 \usepackage{graphicx} 
 \usepackage{amsmath} 
 \usepackage{amssymb} 
@@ -11,10 +10,18 @@
 \usepackage[backref,raiselinks,pdfhighlight=/O,pagebackref,hyperfigures,breaklinks,colorlinks,pdfstartview=FitBH,linkcolor={linkcolor},anchorcolor={linkcolor},citecolor={linkcolor},filecolor={linkcolor},menucolor={linkcolor},pagecolor={linkcolor},urlcolor={linkcolor}]{hyperref}
 \usepackage{epigraph}
 \usepackage{cleveref}
-
 \input{/Users/shane/.latexrc}
+\usepackage{noweb}
 \pagestyle{noweb}
+\noweboptions{externalindex}
+
 \begin{document}
 
-%\input{$FILE$}
-%\end{document}
+\input{@FILE@}
+
+\paragraph{Defined Chunks}\par\noindent
+\nowebchunks
+\paragraph{Index}\par\noindent
+\nowebindex
+@
+\end{document}

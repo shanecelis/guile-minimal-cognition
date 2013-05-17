@@ -61,7 +61,7 @@ int dot_y2(double t, const double *y, double *dydt, void *params);
 int step_ctrnn(double *ty, double h, ctrnn_params *params);
 @ 
   
-First thing we'd like to do is compute the $\dot{Y}$ \ref{dot_y1}
+First thing we'd like to do is compute the $\dot{Y}$ \cref{dot_y1}
 vector for our given CTRNN, and we won't be using a method that
 requires the Jacobian.
 
@@ -69,6 +69,7 @@ requires the Jacobian.
 int dot_y1(double t, const double *y, double *dydt, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
+               <<Weird testing.>>
   <<Compute $R \set W \, Y - \Theta$.>>
   <<Compute $R \set \Sigma(R)$.>>
   <<Compute $R \set R - Y$.>>
@@ -76,7 +77,7 @@ int dot_y1(double t, const double *y, double *dydt, void *params)
   <<Compute $R \set R \circ T^{-1}$.>>
   return GSL_SUCCESS;
 }
-@ 
+@ % dot_y1
 
 <<Function>>=
 int dot_y2(double t, const double *y, double *dydt, void *params)
@@ -84,7 +85,7 @@ int dot_y2(double t, const double *y, double *dydt, void *params)
   ctrnn_params *cparams = (ctrnn_params *) params;
   <<Compute $R \set Y + \Theta$.>>
   <<Compute $R \set G \circ R$.>>
-  <<Compute $R \set \sigma(R)$.>>
+  <<Compute $R \set \Sigma(R)$.>>
   <<Compute $R \set W \, R$.>>
   <<Compute $R \set R - Y$.>>
   <<Compute $R \set R + I(t)$.>>
@@ -103,7 +104,8 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
   double *t = ty;
   gsl_odeiv2_system sys = {&dot_y1, 
                            NULL, 
-                           params->n, params};
+                           params->n, 
+                           params};
   gsl_odeiv2_driver * d = 
          gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rkf45,
                                         1e-2, 1e-6, 0.0);
@@ -161,6 +163,7 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   RELEASE_HANDLE(weights);
   RELEASE_HANDLE(time_constant);
   RELEASE_HANDLE(bias);
+  RELEASE_HANDLE(gain);
   return SCM_BOOL_T;
 }
 @ 
@@ -254,19 +257,26 @@ void init_ctrnn(void)
 
 Now let's test it.  
 <<test>>=
-(define y #f64(0.0 0.1))
+(define (copy-array a) 
+  (let ((b (apply make-typed-array (array-type a) 0. (array-shape a))))
+    (array-copy! a b)
+    b))
+(define y (copy-array #f64(0.0 0.1)))
+(check y (=> (=? 0.0001)) #f64(0.0 0.1))
 (check (procedure? make-n-ctrnn) => #t)
 (define c (make-n-ctrnn 1))
 (check (time-constant c) => #f64(1.0))
 (check (bias c) => #f64(0.0))
 (check (gain c) => #f64(1.0))
-(check (weights c) => #f64(1.0))
+(check (weights c) => #f64(0.0))
 (check (array-dimensions (time-constant c)) => '(1))
 (check (step-ctrnn y 0.01 c) => #t)
-(check y (=> =?) #f64(0.01 0.12))
-(define y #f64(0.0 0.1))
+(define y* (copy-array #f64(0.01 0.10398)))
+(check y (=> =?) y*)
+(set! y (copy-array #f64(0.0 0.1)))
+(check y (=> =?) #f64(0.0 0.1))
 (check (step-ctrnn y 0.01 c) => #t)
-(check y (=> =?) #f64(0.01 0.12))
+(check y (=> =?) y*)
 @ 
 
 Let's test whether the input will make a difference.
@@ -275,7 +285,7 @@ Let's test whether the input will make a difference.
 (set! y #f64(0.0 0.1))
 (define c2 (make-n-ctrnn 1 (lambda (t i) 1.)))
 (check (step-ctrnn y 0.01 c2) => #t)
-(check y (=> =?) #f64(0.01 0.12))
+(check y (=> (negate =?)) y*)
 @ 
 
 \subsection{Evolving the CTRNN}
@@ -335,4 +345,3 @@ Now, let's convert this genome to a ctrnn.
 
 \appendix
 \input{ctrnn-appendix}
-
