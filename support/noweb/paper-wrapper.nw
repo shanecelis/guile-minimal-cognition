@@ -13,7 +13,7 @@
 \input{/Users/shane/.latexrc}
 \usepackage{noweb}
 \pagestyle{noweb}
-\noweboptions{externalindex}
+\noweboptions{externalindex,longxref}
 
 \begin{document}
 

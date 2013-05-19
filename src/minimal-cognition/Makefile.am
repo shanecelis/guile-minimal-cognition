@@ -1,5 +1,10 @@
 
-EXTRA_DIST = ctrnn-paper.pdf vision-paper.pdf
+# Stop make from deleting intermediate files. 
+# http://darrendev.blogspot.com/2008/06/stopping-make-delete-intermediate-files.html
+.SECONDARY:
+
+NOWEB_DOCS = ctrnn-paper.pdf vision-paper.pdf 
+EXTRA_DIST = $(NOWEB_DOCS)
 
 NOWEB_FILES = ctrnn.nw ctrnn-paper.nw ctrnn-appendix.nw fode.nw vision.nw 
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
@@ -8,19 +13,27 @@ NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
 BUILT_SOURCES = ctrnn.c.x fode.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
-if LATEXMK
-all-local : ctrnn-paper.pdf vision-paper.pdf
-CLEANFILES += ctrnn-paper.pdf vision-paper.pdf
+doc: $(NOWEB_DOCS)
 
-ctrnn.tex: ctrnn.nw ctrnn-appendix.nw
-ctrnn-paper.pdf: ctrnn-paper.tex ctrnn.tex ctrnn-appendix.tex
+if LATEXMK
+all-local : $(NOWEB_DOCS)
+CLEANFILES += $(NOWEB_DOCS)
+
+ctrnn.tex: ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
+#ctrnn-appendix.tex: ctrnn-appendix.nw ctrnn.nw $(BOILERPLATE)
+
+ctrnn-paper.pdf: ctrnn-paper.tex ctrnn.tex
 vision-paper.pdf: vision-paper.tex vision.tex
+
+# ctrnn-cat.nw: ctrnn.nw ctrnn-appendix.nw
+# 	cat $^ | cpif $@
+
 endif
 clean-local : clean-latexmk
 
-MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn --"
+MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn -n ctrnn-cat=ctrnn --"
 #MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl --"
-#WARN_NOTANGLE_FLAGS = -W 
+WARN_NOTANGLE_FLAGS = -W 
 NOWEAVE_FLAGS = $(MARKUP_FLAGS)
 NOTANGLE_C_FLAGS = -c -L $(MARKUP_FLAGS)
 NOTANGLE_H_FLAGS = -L $(MARKUP_FLAGS)

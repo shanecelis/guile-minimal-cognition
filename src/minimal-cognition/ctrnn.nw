@@ -41,6 +41,8 @@ The implementation will use the
 for its linear algebra needs.
 
 <<file:ctrnn.h>>=
+#ifndef _CTRNN_H_
+#define _CTRNN_H_
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -50,15 +52,19 @@ typedef struct ctrnn_params {
   double *time_constant; /* n real numbers */
   double *bias; /* n real numbers */
   double *gain;
+  //ctrnn_input input;
   double (*input)(double t, int i, struct ctrnn_params *params);
   void   *user;
 } ctrnn_params;
+
+typedef double (*ctrnn_input)(double t, int i, struct ctrnn_params *params);
 
 //int dot_y(double t, const double *y, double *dydt, void *params);
 int dot_y1(double t, const double *y, double *dydt, void *params);
 int dot_y2(double t, const double *y, double *dydt, void *params);
 
 int step_ctrnn(double *ty, double h, ctrnn_params *params);
+#endif /* _CTRNN_H_ */
 @ 
   
 First thing we'd like to do is compute the $\dot{Y}$ \cref{dot_y1}
@@ -120,6 +126,9 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 \subsection{Again, But With More Scheme!}
 
 <<Primitive>>=
+
+#define C_STRING_TO_SYMBOL(str) scm_string_to_symbol(scm_from_locale_string(str))
+
 SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
              SCM time_constant, SCM bias, SCM gain, SCM input_func),
@@ -133,7 +142,7 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
 #define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
   scm_t_array_handle scm_var ## _handle; \
   scm_array_get_handle(scm_var, &scm_var ## _handle); \
-  double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
+  const double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
 
 #define RELEASE_HANDLE(scm_var) \
   scm_array_handle_release(&scm_var ## _handle);
@@ -143,7 +152,7 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   GET_READ_DOUBLE_HANDLE(time_constant, tc_array);
   GET_READ_DOUBLE_HANDLE(bias, b_array);
   GET_READ_DOUBLE_HANDLE(gain, g_array);
-
+  int err;
   ctrnn_params params;
   params.n = scm_to_int(n);
   params.weights = w_array;
@@ -153,18 +162,52 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   if (scm_is_false(input_func)) {
     params.input = NULL;
     params.user = NULL;
-  } else {
+  } else if (scm_is_true(scm_procedure_p (input_func))) {
     params.input = call_scm_input_func;
     params.user = input_func;
+  } else if (scm_is_true(scm_list_p (input_func))) {
+    SCM list = input_func;
+    
+    if (scm_is_false(scm_eq_p(scm_car(list), 
+                              C_STRING_TO_SYMBOL("c-vision-input")))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), SCM_EOL);
+    }
+    list = scm_cdr(list); // Skip element 0.
+
+    params.input = vision_input; // C vision implementation.
+    struct vision_args vargs;
+    vargs.ty = ty_array;
+    list = scm_cdr(list); // Skip element 1.
+    vargs.m = scm_to_int(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.n = scm_to_int(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.d = scm_to_double(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.r = scm_to_double(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.D = scm_to_double(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.Theta = scm_to_double(scm_car(list));
+    list = scm_cdr(list); 
+    vargs.max_output = scm_to_double(scm_car(list));
+    list = scm_cdr(list); 
+    setup_vision_args(&vargs);
+    params.user = &vargs;
+  } else {
+    scm_throw(C_STRING_TO_SYMBOL("invalid-input-func"), SCM_EOL);
+    return SCM_BOOL_F;
   }
-  step_ctrnn(ty_array, scm_to_double(h), &params);
+  err = step_ctrnn(ty_array, scm_to_double(h), &params);
+
+  //teardown_vision_args(params.user);
 
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(weights);
   RELEASE_HANDLE(time_constant);
   RELEASE_HANDLE(bias);
   RELEASE_HANDLE(gain);
-  return SCM_BOOL_T;
+  return err == 0 ? SCM_BOOL_T : SCM_BOOL_F;
 }
 @ 
 
@@ -344,4 +387,3 @@ Now, let's convert this genome to a ctrnn.
 @ 
 
 \appendix
-\input{ctrnn-appendix}

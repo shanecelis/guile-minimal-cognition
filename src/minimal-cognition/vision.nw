@@ -86,7 +86,7 @@ solution $(x_3, y_3)$.
   (x_3, y_3) = R^T\ (x_3', y_3') + (x_1, y_2)
 \end{align}
 
-The procedure [[intersetion-with-circle]] solves the general problem.
+The procedure [[intersection-with-circle]] solves the general problem.
 
 <<Procedure>>=
 (define-public (intersection-with-circle x1 y1 theta x2 y2 r)
@@ -324,14 +324,19 @@ The above works; however, it's not fast enough. So we're going to
 rewrite it in C.
 
 <<file:vision.h>>=
-#include "ctrnn.h"
+#ifndef _VISION_H_
+#define _VISION_H_
+
 <<ctrnn:Include GSL headers.>>
 <<Structure>>
 <<Macro>>
 
 void setup_vision_args(struct vision_args *args);
 void teardown_vision_args(struct vision_args *args);
+#include "ctrnn.h"
+
 double vision_input (double t, int i, struct ctrnn_params *params);
+#endif /* _VISION_H_ */
 @ 
 
 <<file:vision.c>>=
@@ -414,12 +419,18 @@ double vision_input (double t, int i, struct ctrnn_params *params)
   struct vision_args* args = (struct vision_args *) params->user;
   if (i >= args->n)
     return 0.;
+  if (i >= params->n) {
+    // Error: More input requested than nodes are available.
+    
+  }
+
   double min_distance = args->D;
   for (int j = 1; j <= args->m; j++) {
     double distance;
     <<$distance \set $ distance between sensor i and object j.>>
     min_distance = MIN(min_distance, distance);
   }
+  return min_distance;
 }
 @ 
 
