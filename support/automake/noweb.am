@@ -17,10 +17,10 @@ WARN_NOTANGLE = $(top_srcdir)/bin/warn-notangle
 %.h : %.nw $(BOILERPLATE)
 	$(AM_V_GEN) $(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_H_FLAGS) -R"file:$@" $^ 
 
-%.test.c %.c %.cpp : %.nw $(BOILERPLATE)
+%-test.c %.c %.cpp : %.nw $(BOILERPLATE)
 	$(AM_V_GEN) $(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_C_FLAGS)  -R"file:$@" $^
 
-%.test.scm %.scm : %.nw $(BOILERPLATE)
+%-test.scm %.scm : %.nw $(BOILERPLATE)
 	$(AM_V_GEN)	$(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^
 
 all.defs: $(NOWEB_DEFS)
@@ -36,9 +36,10 @@ all.defs: $(NOWEB_DEFS)
 	$(AM_V_GEN) (cat $(top_srcdir)/support/noweb/paper-wrapper.nw |	perl -pe "s/\\@FILE\\@/$$(basename -s .nw $<)/;") | cpif $@
 
 NOWEB_DEFS = $(NOWEB_FILES:.nw=.defs)
-EXTRA_DIST += $(NOWEB_FILES:.nw=.tex) $(NOWEB_PRODUCTS)
-BUILT_SOURCES += $(NOWEB_FILES:.nw=.tex) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
-CLEANFILES += $(NOWEB_PRODUCTS)
+NOWEB_TEXS = $(NOWEB_FILES:.nw=.tex)
+EXTRA_DIST += $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
+BUILT_SOURCES += $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
+CLEANFILES += $(NOWEB_PRODUCTS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
 
 else
 %.scm %.h %.c %.cpp %.tex : %.nw

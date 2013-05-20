@@ -7,9 +7,9 @@ NOWEB_DOCS = ctrnn-paper.pdf vision-paper.pdf
 EXTRA_DIST = $(NOWEB_DOCS)
 
 NOWEB_FILES = ctrnn.nw ctrnn-paper.nw ctrnn-appendix.nw fode.nw vision.nw 
-NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn.test.scm ctrnn.test.c \
-	               fode.h fode.c fode.scm fode.test.scm vision.scm \
-                 vision.test.scm vision.c vision.h
+NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn-test.scm ctrnn-test.c \
+	               fode.h fode.c fode.scm fode-test.scm vision.scm \
+                 vision-test.scm vision.c vision.h vision-test.c
 BUILT_SOURCES = ctrnn.c.x fode.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
@@ -53,16 +53,21 @@ MAINTAINERCLEANFILES = Makefile.in config.h.in
 guilemoduledir = $(GUILE_SITE_LIB)/$(PACKAGE_TARNAME)
 dist_guilemodule_DATA = ctrnn.scm
 
-check_PROGRAMS = ctrnn.test
-ctrnn_test_LDADD   = libguile-ctrnn.la
-ctrnn_test_SOURCES = ctrnn.test.c
+check_PROGRAMS = ctrnn-ctest vision-ctest
+ctrnn_ctest_LDADD   = libguile-ctrnn.la
+ctrnn_ctest_SOURCES = ctrnn-test.c
+
+vision_ctest_LDADD   = libguile-ctrnn.la
+vision_ctest_SOURCES = vision-test.c
 
 #TESTS_ENVIRONMENT = $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -x $(libdir)
-TESTS_ENVIRONMENT = $(top_builddir)/bin/runtests
-TESTS = ctrnn.test.scm fode.test.scm vision.test.scm
+#TESTS_ENVIRONMENT = LOG_COMPILER
+TESTS = ctrnn-test.scm fode-test.scm vision-test.scm ctrnn-ctest vision-ctest
+TEST_EXTENSIONS = .scm 
+SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
 
 # TESTS_ENVIRONMENT = 
-# TESTS += ctrnn.test
+# TESTS =  ctrnn-test vision-test 
 
 # src_NOWEB = ctrnn.c 
 # #ctrnn.scm ctrnn.h
@@ -76,11 +81,15 @@ ctrnn.c.x : ctrnn.c
 fode.c.x : fode.c
 
 ctrnn.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
-ctrnn.test.scm : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
-ctrnn.test.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
+ctrnn-test.scm : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
+ctrnn-test.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
 
 vision.c : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
 vision.h : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
+vision-test.c : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
+vision-test.scm : vision.nw ctrnn-appendix.nw $(BOILERPLATE)
+
+fode-test.scm : fode.nw  $(BOILERPLATE)
 
 
 dist-hook:

@@ -8,7 +8,7 @@ AC_CONFIG_AUX_DIR([support/build-aux])
 #AM_INIT_GUILE_MODULE
 
 # We're going to use GNUMake and we're going to like it.
-AM_INIT_AUTOMAKE([-Wall foreign -Wno-portability])
+AM_INIT_AUTOMAKE([-Wall foreign -Wno-portability parallel-tests])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([support/m4])
 # Checks for programs.
@@ -62,6 +62,8 @@ AC_SUBST(DISTDIR, ["${PACKAGE_TARNAME}-${PACKAGE_VERSION}"])
 AC_HEADER_STDC
 AC_CHECK_HEADERS([stdio.h])
 
+AC_CHECK_HEADERS([tap/basic.h], [], [])
+
 # Checks for typedefs, structures, and compiler characteristics.
 
 # Checks for library functions.
@@ -82,6 +84,5 @@ AC_CONFIG_FILES([ Makefile
                   tests/Makefile 
                   tests/works-without-noweb.sh
                   tests/print-install.sh
-                  ])
+                  ], [chmod +x bin/runtests])
 AC_OUTPUT
-chmod a+x bin/runtests

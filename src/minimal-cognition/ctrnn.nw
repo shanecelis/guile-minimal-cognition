@@ -48,16 +48,16 @@ for its linear algebra needs.
 
 typedef struct ctrnn_params {
   size_t  n; /* number of nodes */
-  double *weights; /* n x n real numbers */
-  double *time_constant; /* n real numbers */
-  double *bias; /* n real numbers */
-  double *gain;
+  const double *weights; /* n x n real numbers */
+  const double *time_constant; /* n real numbers */
+  const double *bias; /* n real numbers */
+  const double *gain;
   //ctrnn_input input;
-  double (*input)(double t, int i, struct ctrnn_params *params);
+  int (*input)(double t, int i, struct ctrnn_params *params, double *output);
   void   *user;
 } ctrnn_params;
 
-typedef double (*ctrnn_input)(double t, int i, struct ctrnn_params *params);
+typedef int (*ctrnn_input)(double t, int i, struct ctrnn_params *params, double *output);
 
 //int dot_y(double t, const double *y, double *dydt, void *params);
 int dot_y1(double t, const double *y, double *dydt, void *params);
@@ -192,6 +192,7 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
     list = scm_cdr(list); 
     vargs.max_output = scm_to_double(scm_car(list));
     list = scm_cdr(list); 
+    vargs.R = NULL;
     setup_vision_args(&vargs);
     params.user = &vargs;
   } else {
@@ -212,10 +213,11 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
 @ 
 
 <<Function>>=
-double call_scm_input_func(double t, int i, struct ctrnn_params *params)
+int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output)
 {
   SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
-  return scm_to_double(res);
+  *output = scm_to_double(res);
+  return 0;
 }
 @ 
 

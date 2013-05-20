@@ -335,7 +335,7 @@ void setup_vision_args(struct vision_args *args);
 void teardown_vision_args(struct vision_args *args);
 #include "ctrnn.h"
 
-double vision_input (double t, int i, struct ctrnn_params *params);
+int vision_input (double t, int i, struct ctrnn_params *params, double *output);
 #endif /* _VISION_H_ */
 @ 
 
@@ -414,24 +414,37 @@ void teardown_vision_args(struct vision_args *args)
 @ 
 
 <<Function>>=
-double vision_input (double t, int i, struct ctrnn_params *params)
+int vision_input (double t, int i, struct ctrnn_params *params, double *output)
 {
   struct vision_args* args = (struct vision_args *) params->user;
-  if (i >= args->n)
-    return 0.;
+  if (i >= args->n) {
+    *output = 0.;
+    return 0;
+  }
   if (i >= params->n) {
     // Error: More input requested than nodes are available.
-    
+    return 1;
   }
 
   double min_distance = args->D;
   for (int j = 1; j <= args->m; j++) {
     double distance;
+    int err = 0;
     <<$distance \set $ distance between sensor i and object j.>>
-    min_distance = MIN(min_distance, distance);
+    if (! err)
+      min_distance = MIN(min_distance, distance);
   }
-  return min_distance;
+  <<Normalize by [[max_output]].>>
+  *output = min_distance;
+  return 0;
 }
+@ 
+
+The output of [[vision_input]] is used by a CTRNN, so we want to
+rescale it from $[0, max_distance]$ to $[0, max_output]$.
+
+<<Normalize by [[max_output]].>>=
+min_distance *= args->max_output/args->D;
 @ 
 
 <<Macro>>=
@@ -441,13 +454,14 @@ double vision_input (double t, int i, struct ctrnn_params *params)
 
 <<$distance \set $ distance between sensor i and object j.>>=
 double x3, y3;
-intersection_with_circle(OBJECT_X(args->ty, 0),
-                         OBJECT_Y(args->ty, 0),
-                         args->R[i],
-                         OBJECT_X(args->ty, j),
-                         OBJECT_Y(args->ty, j),
-                         args->r,
-                         &x3, &y3);
+err = intersection_with_circle(
+                                   OBJECT_X(args->ty, 0),
+                                   OBJECT_Y(args->ty, 0),
+                                   args->R[i],
+                                   OBJECT_X(args->ty, j),
+                                   OBJECT_Y(args->ty, j),
+                                   args->r,
+                                   &x3, &y3);
 distance = sqrt(x3 * x3 + y3 * y3);
 @
 
@@ -489,10 +503,11 @@ int intersection_with_circle(double x1, double y1,
   gsl_vector_set(p2, 1, y2);
 
   int err;
-  <<Compute $p_2 \set R\ (p_2 - p_1)$.>>
+  <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>
   err = intersection_with_circle_specific(gsl_vector_get(p2p, 0),
                                           gsl_vector_get(p2p, 1),
-                                          r, x3);
+                                          r, 
+                                          x3);
   if (err)
     return err;
   else {
@@ -506,11 +521,13 @@ int intersection_with_circle(double x1, double y1,
 }
 @ 
 
-<<Compute $p_2 \set R\ (p_2 - p_1)$.>>=
-  // Compute $p_2 \set (p_2 - p_1)$. 
-  err = gsl_blas_daxpy(-1.0, p1, p2);
+<<Compute $p_2^* \set R\ (p_2 - p_1)$.>>=
+  // Compute $p_2p \set (p_2 - p_1)$. 
+  err = gsl_blas_dcopy(p2, p2p);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
-  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2, 0.0, p2);
+  err = gsl_blas_daxpy(-1.0, p1, p2p);
+  if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2p, 0.0, p2p);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @
 
@@ -521,9 +538,49 @@ err = gsl_blas_daxpy(1.0, p1, p3);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @
 
+Let's write a simple test in C that exercises this functionality.
+<<file:vision-test.c>>=
+#include "vision.h"
+#include "math.h"
+
+int main(int argc, char **argv)
+{
+    struct vision_args vargs;
+    double ty[] = {0., 1., 2., 3., 4.};
+    vargs.ty = ty;
+    vargs.m = 2;
+    vargs.n = 9;
+    vargs.d = 0.,
+    vargs.r = 13.,
+    vargs.D = 205.,
+    vargs.Theta = M_PI / 6.;
+    vargs.max_output =  10.;
+    vargs.R = NULL;
+    setup_vision_args(&vargs);
+
+  ctrnn_params cparams;
+  cparams.n = 1;
+  double zeros[] = {0.};
+  double ones[] = {1.};
+  cparams.weights = zeros;
+  cparams.time_constant = zeros;
+  cparams.bias = zeros;
+  cparams.gain = ones;
+  cparams.user = &vargs;
+
+  double output;
+  int err = 0;
+  for (int i = 0; i < cparams.n; i++) {
+    err += vision_input(0., i, &cparams, &output);
+  }
+  teardown_vision_args(&vargs);
+  return err;
+}
+@ 
+
 \subsection{Test}
-<<file:vision.test.scm>>=
-;; vision.test.scm
+<<file:vision-test.scm>>=
+;; vision-test.scm
 (use-modules (minimal-cognition vision)
              ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
              (emacsy util)

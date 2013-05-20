@@ -27,7 +27,7 @@ double sigmoid(double x, size_t i, void * params);
 double fill_input(double t, size_t i, void *params);
 double invert(double x, size_t i, void * params);
 double hadamard(double x, size_t i, void * params);
-double call_scm_input_func(double t, int i, struct ctrnn_params *params);
+int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output);
 
 <<Function>>
 
@@ -88,8 +88,8 @@ if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 
 
 <<Setup matrices.>>=
-gsl_matrix_view W = gsl_matrix_view_array(cparams->weights, cparams->n, cparams->n);
-gsl_vector_view B = gsl_vector_view_array(cparams->bias, cparams->n); // $\Theta$
+gsl_matrix_const_view W = gsl_matrix_const_view_array(cparams->weights, cparams->n, cparams->n);
+gsl_vector_const_view B = gsl_vector_const_view_array(cparams->bias, cparams->n); // $\Theta$
 gsl_vector_const_view Y = gsl_vector_const_view_array(y, cparams->n);
 gsl_vector_view Rview = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
 gsl_vector* R = &Rview.vector;
@@ -118,7 +118,7 @@ gsl_vector_free(I);
 @
 
 <<Compute $R \set R \circ T^{-1}$.>>=
-gsl_vector_view T = gsl_vector_view_array(cparams->time_constant, cparams->n);
+gsl_vector_const_view T = gsl_vector_const_view_array(cparams->time_constant, cparams->n);
 gsl_vector* Tinv = gsl_vector_alloc(cparams->n);
 gsl_vector_memcpy(Tinv, &T.vector);
 gsl_vector_map(invert, Tinv, NULL);
@@ -133,23 +133,29 @@ gsl_blas_daxpy(1.0, &Y.vector, R);
 @
 
 <<Compute $R \set G \circ R$.>>=
-gsl_vector_view G = gsl_vector_view_array(cparams->gain, cparams->n);
-gsl_vector_map(hadamard, R, &G.vector);
+gsl_vector_const_view G = gsl_vector_const_view_array(cparams->gain, cparams->n);
+gsl_vector_map(hadamard, R, (void *) &G.vector);
 @
 
 <<Function>>=
 double fill_input(double t, size_t i, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
-  if (cparams->input)
-    return cparams->input(t, i, params);
-  else
+  double output;
+  int err;
+  if (cparams->input) {
+     err = cparams->input(t, i, params, &output);
+     if (err) {
+       fprintf(stderr, "error: fill_input had an error %d\n", err);
+     }
+     return output;
+  } else
     return 0.;
 }
 @ 
 \subsection{Test}
-<<file:ctrnn.test.scm>>=
-;; ctrnn.test.scm
+<<file:ctrnn-test.scm>>=
+;; ctrnn-test.scm
 (use-modules (minimal-cognition ctrnn)
              (float-equality))
 
@@ -162,10 +168,13 @@ double fill_input(double t, size_t i, void *params)
 <<+ Test Postscript>>
 @
 
-<<file:ctrnn.test.c>>=
+<<file:ctrnn-test.c>>=
 #include "ctrnn.h"
+//#include <tap/basic.h>
+#include <stdio.h>
 
 int main(int argc, char **argv) {
+    //plan(1)
     double gain = 1.0;
     double bias = 1.0;
     double weights = 1.0;
@@ -173,6 +182,8 @@ int main(int argc, char **argv) {
     double yt[] = {0.0, 1.0};
     ctrnn_params params = {1, &weights, &time_constant, &bias, &gain, NULL, NULL};
     step_ctrnn(yt, 0.01, &params);
+    //ok(1, "first test");
+    printf("1..1\nok 1 - hi\n");
     return 0;
 }
 @ 
