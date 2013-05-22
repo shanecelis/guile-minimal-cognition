@@ -14,7 +14,13 @@ modules and defines some procedures.\footnote{Style note: I use the
   #:use-module (vector-math)
   #:use-module (infix)
   #:use-module (ice-9 optargs)
-  #:use-module (minimal-cognition fode))
+  #:use-module (minimal-cognition fode)
+  #:use-module (minimal-cognition ctrnn))
+
+;; This is erroneously reported as a "file not found" error when
+;; there is a symbol missing. Ugh.
+#;(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-vision" "init_vision")
+
 
 <<Procedure>>
 @ 
@@ -279,6 +285,11 @@ Great, now let's basically do the same tests but with this new form.
 (set!   r 1) ;; radius of objects
 (define D 10) ;; max sight distance
 
+;; We may want to test against the C function instead.
+(when (and (get-environment-variable "USE_C_VISION_INPUT") 
+           (string=? "1" (get-environment-variable "USE_C_VISION_INPUT")))
+ (format #t "Using c-vision-input.~%")
+ (set! make-vision-input make-c-vision-input))
 
 (define vision-input (make-vision-input ty m n d r D Theta D))
 (check (vision-input t 0) (=> fe:=?) 2)
@@ -326,6 +337,7 @@ rewrite it in C.
 <<file:vision.h>>=
 #ifndef _VISION_H_
 #define _VISION_H_
+#include "ctrnn.h"
 
 <<ctrnn:Include GSL headers.>>
 <<Structure>>
@@ -333,26 +345,31 @@ rewrite it in C.
 
 void setup_vision_args(struct vision_args *args);
 void teardown_vision_args(struct vision_args *args);
-#include "ctrnn.h"
 
 int vision_input (double t, int i, struct ctrnn_params *params, double *output);
+void call_scm_sight_listener_func(double x1, double y1, double x2, double y2, struct vision_args* vargs);
+void init_vision(void);
 #endif /* _VISION_H_ */
 @ 
 
 <<file:vision.c>>=
+#include <libguile.h>
+#ifndef SCM_MAGIC_SNARFER 
 #include "vision.h"
 #include "math.h"
-
+#include <assert.h>
+#endif 
 int intersection_with_circle(double x1, double y1, 
                              gsl_matrix * R, 
                              double x2, double y2, 
                              double r, 
                              double  *x3, double *y3);
 <<Function>>
+<<Initialize>>
 @ 
 
 Well, rewriting isn\'t fun, but this is an inner loop where we do need
-the speed.  We need a structure to hold all our arguments.
+the speed.  We need a structure to hold all the arguments.
 
 <<Structure>>=
 struct vision_args {
@@ -365,6 +382,8 @@ struct vision_args {
   double Theta; // total angle of vision
   double max_output;
   gsl_matrix **R; // Rotation matrices for each sensor.
+  void (*sight_listener)(double x1, double y1, double x2, double y2, struct vision_args* vargs);
+  void *user;
 };
 @
 
@@ -417,22 +436,34 @@ void teardown_vision_args(struct vision_args *args)
 int vision_input (double t, int i, struct ctrnn_params *params, double *output)
 {
   struct vision_args* args = (struct vision_args *) params->user;
-  if (i >= args->n) {
+  if (i > args->n) {
+    // Only the first n nodes are sensors.
     *output = 0.;
     return 0;
   }
   if (i >= params->n) {
     // Error: More input requested than nodes are available.
-    return 1;
+    return 2;
   }
 
+  int err;
   double min_distance = args->D;
+  double xc, yc; /* Closest object position (xc, yc). */
+  // Set xc and yc to the maximum distance point.
+  <<Compute $(x_c, y_c) \set R \, (D, 0)$>>
+  // Add the sensor position.
+  <<Compute $(x_c, y_c) \set (x_c, y_c) + (x_0, y_0)$>>
   for (int j = 1; j <= args->m; j++) {
     double distance;
-    int err = 0;
     <<$distance \set $ distance between sensor i and object j.>>
-    if (! err)
-      min_distance = MIN(min_distance, distance);
+    if (! err && min_distance >= distance) {
+      min_distance = distance;
+      xc = x3;
+      yc = y3;
+    }
+  }
+  if (args->sight_listener) {
+    args->sight_listener(OBJECT_X(args->ty, 0), OBJECT_Y(args->ty, 0), xc, yc, args);
   }
   <<Normalize by [[max_output]].>>
   *output = min_distance;
@@ -446,6 +477,33 @@ rescale it from $[0, max_distance]$ to $[0, max_output]$.
 <<Normalize by [[max_output]].>>=
 min_distance *= args->max_output/args->D;
 @ 
+
+We want to set $(x_c, y_c)$ to the maximum distance.
+<<Compute $(x_c, y_c) \set R \, (D, 0)$>>=
+static gsl_vector* pc = NULL, *pcp;
+if (pc == NULL) {
+  pc = gsl_vector_alloc(2);
+  pcp = gsl_vector_alloc(2);
+}
+gsl_vector_set(pcp, 0, args->D);
+gsl_vector_set(pcp, 1, 0.);
+err = gsl_blas_dgemv (CblasNoTrans, 1.0, args->R[i], pcp, 0.0, pc);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+@
+
+Add the sensor position.
+<<Compute $(x_c, y_c) \set (x_c, y_c) + (x_0, y_0)$>>=
+static gsl_vector* p0 = NULL;
+if (p0 == NULL) 
+  p0 = gsl_vector_alloc(2);
+gsl_vector_set(p0, 0, OBJECT_X(args->ty, 0));
+gsl_vector_set(p0, 1, OBJECT_Y(args->ty, 0));
+err = gsl_blas_daxpy(1.0, p0, pc);
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+xc = gsl_vector_get(pc, 0);
+yc = gsl_vector_get(pc, 1);
+@
+
 
 <<Macro>>=
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -473,10 +531,10 @@ distance = sqrt(x3 * x3 + y3 * y3);
 <<Function>>=
 int intersection_with_circle_specific (double x2, double y2, double r, double *result)
 {
-  if (x2 < 0 || fabs(y2) > r)
+  if (x2 <= 0 || fabs(y2) > r)
     return 1; // We're not touching the circle.
   else {
-    *result = sqrt(r * r - y2 * y2);
+    *result = x2 - sqrt(r * r - y2 * y2);
     return 0; // Success. No error.
   }
 }
@@ -500,7 +558,11 @@ int intersection_with_circle(double x1, double y1,
   gsl_vector_set(p1, 1, y1);
 
   gsl_vector_set(p2, 0, x2);
+  assert(gsl_vector_get(p2, 0) == x2);
   gsl_vector_set(p2, 1, y2);
+  assert(gsl_vector_get(p2, 1) == y2);
+  // GDB tip: print *p2->data@2 to see the contents of the gsl vector.
+  //assert(0);
 
   int err;
   <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>
@@ -513,30 +575,60 @@ int intersection_with_circle(double x1, double y1,
   else {
     gsl_vector_set(p3, 0, *x3);
     gsl_vector_set(p3, 1, 0.);
-    <<Compute $p_3 \set R^T\ p_3 + p_1$.>>
-    *x3 = gsl_vector_get(p3, 0);
-    *y3 = gsl_vector_get(p3, 1);
+    <<Compute $p_1 \set R^T\ p_3 + p_1$.>>
+    *x3 = gsl_vector_get(p1, 0);
+    *y3 = gsl_vector_get(p1, 1);
     return 0;
   }
 }
 @ 
 
 <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>=
-  // Compute $p_2p \set (p_2 - p_1)$. 
-  err = gsl_blas_dcopy(p2, p2p);
+  /* err = gsl_blas_dcopy(p2, p2p); */
+  /* assert(err == 0); */
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
-  err = gsl_blas_daxpy(-1.0, p1, p2p);
+  err = gsl_blas_daxpy(-1.0, p1, p2);
+  assert(err == 0);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
-  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2p, 0.0, p2p);
+  // You cannot use x <- R x. It will destroy everything.
+  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2, 0.0, p2p);
+  assert(err == 0);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @
 
-<<Compute $p_3 \set R^T\ p_3 + p_1$.>>=
-err = gsl_blas_dgemv (CblasTrans, 1.0, R, p3, 0.0, p3);
+<<Compute $p_1 \set R^T\ p_3 + p_1$.>>=
+err = gsl_blas_dgemv (CblasTrans, 1.0, R, p3, 1.0, p1);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
-err = gsl_blas_daxpy(1.0, p1, p3);
-if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+/* err = gsl_blas_daxpy(1.0, p1, p3); */
+/* if (err != GSL_SUCCESS) return GSL_EBADFUNC; */
 @
+
+<<Function>>=
+void call_scm_sight_listener_func(double x1, double y1, double x2, double y2, struct vision_args* vargs)
+{
+  SCM p1 = scm_c_make_vector(2, SCM_BOOL_F);
+  SCM p2 = scm_c_make_vector(2, SCM_BOOL_F);
+  scm_c_vector_set_x(p1, 0, scm_from_double(x1));
+  scm_c_vector_set_x(p1, 1, scm_from_double(y1));
+
+  scm_c_vector_set_x(p2, 0, scm_from_double(x2));
+  scm_c_vector_set_x(p2, 1, scm_from_double(y2));
+
+  SCM res = scm_call_2((SCM) vargs->user, p1, p2);
+}
+@ 
+
+<<Initialize>>=
+void init_vision(void)
+{
+#ifndef SCM_MAGIC_SNARFER 
+#include "vision.c.x" 
+#endif
+}
+@
+
+
+\subsection{Testing the C Implementation}
 
 Let's write a simple test in C that exercises this functionality.
 <<file:vision-test.c>>=
@@ -578,13 +670,75 @@ int main(int argc, char **argv)
 }
 @ 
 
+The above test only checks that the code works.  It doesn't check for
+comformity with the Scheme implementation.  We can run the same tests
+on the C implementation by exposing a Scheme procedure to the C
+function.
+
+<<Function>>=
+SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
+            (/* We can only have 10 parameters so the two parameters 
+                t and i have been replaced by (t . i). */
+              SCM tAndI,
+             /* parameters */
+             SCM ty, SCM m, SCM n, SCM d, SCM r, 
+             SCM D,  SCM Theta, SCM max_output, SCM sight_listener),
+            "Returns the output for sensor i at time t.")
+{
+  struct ctrnn_params cparams;
+  struct vision_args vargs;
+  SCM t = scm_car(tAndI);
+  SCM i = scm_cdr(tAndI);
+  GET_DOUBLE_HANDLE(ty, ty_array);
+  vargs.ty = ty_array;
+  vargs.m = scm_to_int(m);
+  vargs.n = scm_to_int(n);
+  vargs.d = scm_to_double(d);
+  vargs.r = scm_to_double(r);
+  vargs.D = scm_to_double(D);
+  vargs.Theta = scm_to_double(Theta);
+  vargs.max_output = scm_to_double(max_output);
+  vargs.R = NULL;
+  if (SCM_UNBNDP(sight_listener)) {
+      vargs.sight_listener = NULL;
+      vargs.user = NULL;
+  } else if (scm_is_true(scm_procedure_p(sight_listener))) {
+    vargs.sight_listener = call_scm_sight_listener_func;
+    vargs.user = sight_listener;
+  } else {
+    // Expect nothing or a procedure.
+    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+  }
+  setup_vision_args(&vargs); 
+  cparams.input = vision_input; // C vision implementation.
+  cparams.user = &vargs;
+  cparams.n = 2 * vargs.n; // Nodes = sensors + 1.
+  double output;
+  int err = vision_input(scm_to_double(t), scm_to_int(i), &cparams, &output);
+  teardown_vision_args(&vargs);
+  if (err)
+    scm_throw(C_STRING_TO_SYMBOL("c-vision-input-error"), scm_list_1(scm_from_int(err)));
+  else
+    return scm_from_double(output);
+}
+@ 
+
+<<Procedure>>=
+(define (make-c-vision-input ty . args)
+  (lambda (t i)
+   (apply (@@ (minimal-cognition ctrnn) c-vision-input) (cons t i) (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args)))
+@ 
+
+
+
+
 \subsection{Test}
 <<file:vision-test.scm>>=
 ;; vision-test.scm
 (use-modules (minimal-cognition vision)
              ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
              (emacsy util)
-             )
+             (srfi srfi-98))
 (eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.
            (module-use! (current-module) (resolve-module '(minimal-cognition vision))))

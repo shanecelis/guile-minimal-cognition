@@ -75,14 +75,15 @@ This is a
 \end{align}
 
 <<Compute $R \set W \, Y - \Theta$.>>=
-<<Setup matrices.>>
 gsl_vector_memcpy(R, &B.vector);
 int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, &Y.vector, -1.0, R);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @ 
 
 <<Compute $R \set W \, R$.>>=
-int err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, R, 0.0, R);
+int err = gsl_blas_dcopy(R, temp); 
+if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+err = gsl_blas_dgemv (CblasNoTrans, 1.0, &W.matrix, temp, 0.0, R);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @ 
 
@@ -93,7 +94,12 @@ gsl_vector_const_view B = gsl_vector_const_view_array(cparams->bias, cparams->n)
 gsl_vector_const_view Y = gsl_vector_const_view_array(y, cparams->n);
 gsl_vector_view Rview = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
 gsl_vector* R = &Rview.vector;
+gsl_vector* temp = gsl_vector_alloc(cparams->n); // R' just a temp va
 @ 
+
+<<Teardown matrices.>>=
+gsl_vector_free(temp);
+@
 
 <<Compute $R \set \Sigma(R)$.>>=
 gsl_vector_map(sigmoid, R, NULL);
@@ -127,7 +133,6 @@ gsl_vector_free(Tinv);
 @
 
 <<Compute $R \set Y + \Theta$.>>=
-<<Setup matrices.>>
 gsl_vector_memcpy(R, &B.vector);
 gsl_blas_daxpy(1.0, &Y.vector, R);
 @

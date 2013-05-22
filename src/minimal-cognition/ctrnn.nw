@@ -46,6 +46,7 @@ for its linear algebra needs.
 #include <stddef.h>
 #include <stdlib.h>
 
+<<Macro>>
 typedef struct ctrnn_params {
   size_t  n; /* number of nodes */
   const double *weights; /* n x n real numbers */
@@ -75,12 +76,13 @@ requires the Jacobian.
 int dot_y1(double t, const double *y, double *dydt, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
-               <<Weird testing.>>
+  <<Setup matrices.>>
   <<Compute $R \set W \, Y - \Theta$.>>
   <<Compute $R \set \Sigma(R)$.>>
   <<Compute $R \set R - Y$.>>
   <<Compute $R \set R + I(t)$.>>
   <<Compute $R \set R \circ T^{-1}$.>>
+  <<Teardown matrices.>>
   return GSL_SUCCESS;
 }
 @ % dot_y1
@@ -89,6 +91,7 @@ int dot_y1(double t, const double *y, double *dydt, void *params)
 int dot_y2(double t, const double *y, double *dydt, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
+  <<Setup matrices.>>
   <<Compute $R \set Y + \Theta$.>>
   <<Compute $R \set G \circ R$.>>
   <<Compute $R \set \Sigma(R)$.>>
@@ -96,6 +99,7 @@ int dot_y2(double t, const double *y, double *dydt, void *params)
   <<Compute $R \set R - Y$.>>
   <<Compute $R \set R + I(t)$.>>
   <<Compute $R \set R \circ T^{-1}$.>>
+  <<Teardown matrices.>>
   return GSL_SUCCESS;
 }
 @ 
@@ -125,27 +129,16 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 
 \subsection{Again, But With More Scheme!}
 
-<<Primitive>>=
-
+<<Macro>>=
 #define C_STRING_TO_SYMBOL(str) scm_string_to_symbol(scm_from_locale_string(str))
+@ 
 
+<<Primitive>>=
 SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
              SCM time_constant, SCM bias, SCM gain, SCM input_func),
             "Move a CTRNN forward a single time step.")
 {
-#define GET_DOUBLE_HANDLE(scm_var, double_array) \
-  scm_t_array_handle scm_var ## _handle; \
-  scm_array_get_handle(scm_var, &scm_var ## _handle); \
-  double* double_array = scm_array_handle_f64_writable_elements(&scm_var ## _handle);
-
-#define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
-  scm_t_array_handle scm_var ## _handle; \
-  scm_array_get_handle(scm_var, &scm_var ## _handle); \
-  const double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
-
-#define RELEASE_HANDLE(scm_var) \
-  scm_array_handle_release(&scm_var ## _handle);
 
   GET_DOUBLE_HANDLE(ty, ty_array);
   GET_READ_DOUBLE_HANDLE(weights, w_array);
@@ -193,6 +186,17 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
     vargs.max_output = scm_to_double(scm_car(list));
     list = scm_cdr(list); 
     vargs.R = NULL;
+    if (scm_is_true(scm_null_p(list))) {
+      vargs.sight_listener = NULL;
+      vargs.user = NULL;
+    } else if (scm_is_true(scm_procedure_p(scm_car(list)))) {
+      vargs.sight_listener = call_scm_sight_listener_func;
+      vargs.user = scm_car(list);
+      list = scm_cdr(list); 
+    } else {
+      // Expect nothing or a procedure.
+      scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+    }
     setup_vision_args(&vargs);
     params.user = &vargs;
   } else {
@@ -212,6 +216,21 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
 }
 @ 
 
+<<Macro>>=
+#define GET_DOUBLE_HANDLE(scm_var, double_array) \
+  scm_t_array_handle scm_var ## _handle; \
+  scm_array_get_handle(scm_var, &scm_var ## _handle); \
+  double* double_array = scm_array_handle_f64_writable_elements(&scm_var ## _handle);
+
+#define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
+  scm_t_array_handle scm_var ## _handle; \
+  scm_array_get_handle(scm_var, &scm_var ## _handle); \
+  const double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
+
+#define RELEASE_HANDLE(scm_var) \
+  scm_array_handle_release(&scm_var ## _handle);
+@ 
+
 <<Function>>=
 int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output)
 {
@@ -227,6 +246,7 @@ void init_ctrnn(void)
 #ifndef SCM_MAGIC_SNARFER 
 #include "ctrnn.c.x" 
 #endif
+  init_vision();
 }
 @
 <<file:ctrnn.scm>>=
@@ -237,7 +257,7 @@ void init_ctrnn(void)
  #:use-module (emacsy util))
 
 ;; This is erroneously reported as a "file not found" error when
-;; there is a symbol missing.
+;; there is a symbol missing. Ugh.
 (load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-ctrnn" "init_ctrnn")
 
 <<Class>>
@@ -308,6 +328,7 @@ Now let's test it.
     b))
 (define y (copy-array #f64(0.0 0.1)))
 (check y (=> (=? 0.0001)) #f64(0.0 0.1))
+(check (procedure? step-ctrnn) => #t)
 (check (procedure? make-n-ctrnn) => #t)
 (define c (make-n-ctrnn 1))
 (check (time-constant c) => #f64(1.0))
