@@ -436,7 +436,7 @@ void teardown_vision_args(struct vision_args *args)
 int vision_input (double t, int i, struct ctrnn_params *params, double *output)
 {
   struct vision_args* args = (struct vision_args *) params->user;
-  if (i > args->n) {
+  if (i >= args->n) {
     // Only the first n nodes are sensors.
     *output = 0.;
     return 0;
@@ -520,7 +520,7 @@ err = intersection_with_circle(
                                    OBJECT_Y(args->ty, j),
                                    args->r,
                                    &x3, &y3);
-distance = sqrt(x3 * x3 + y3 * y3);
+distance = sqrt(x3 * x3 + y3 * y3) - args->d/2.0;
 @
 
 <<Macro>>=
@@ -531,10 +531,11 @@ distance = sqrt(x3 * x3 + y3 * y3);
 <<Function>>=
 int intersection_with_circle_specific (double x2, double y2, double r, double *result)
 {
-  if (x2 <= 0 || fabs(y2) > r)
+  if (x2 < 0 || fabs(y2) > r)
     return 1; // We're not touching the circle.
   else {
-    *result = x2 - sqrt(r * r - y2 * y2);
+    double a = sqrt(r * r - y2 * y2);
+    *result = x2 - a;
     return 0; // Success. No error.
   }
 }
@@ -565,6 +566,7 @@ int intersection_with_circle(double x1, double y1,
   //assert(0);
 
   int err;
+  // FIXME Can't use $p_2'$ in the noweb fragment name. :( 
   <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>
   err = intersection_with_circle_specific(gsl_vector_get(p2p, 0),
                                           gsl_vector_get(p2p, 1),
@@ -586,7 +588,7 @@ int intersection_with_circle(double x1, double y1,
 <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>=
   /* err = gsl_blas_dcopy(p2, p2p); */
   /* assert(err == 0); */
-  if (err != GSL_SUCCESS) return GSL_EBADFUNC;
+  /* if (err != GSL_SUCCESS) return GSL_EBADFUNC; */
   err = gsl_blas_daxpy(-1.0, p1, p2);
   assert(err == 0);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
