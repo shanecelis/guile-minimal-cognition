@@ -48,7 +48,7 @@ for its linear algebra needs.
 
 <<Macro>>
 typedef struct ctrnn_params {
-  size_t  n; /* number of nodes */
+  int  n; /* number of nodes */
   const double *weights; /* n x n real numbers */
   const double *time_constant; /* n real numbers */
   const double *bias; /* n real numbers */
@@ -65,6 +65,8 @@ int dot_y1(double t, const double *y, double *dydt, void *params);
 int dot_y2(double t, const double *y, double *dydt, void *params);
 
 int step_ctrnn(double *ty, double h, ctrnn_params *params);
+
+void init_ctrnn(void);
 #endif /* _CTRNN_H_ */
 @ 
   
@@ -112,7 +114,7 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 {
   double *y = ty + 1;
   double *t = ty;
-  gsl_odeiv2_system sys = {&dot_y1, 
+  gsl_odeiv2_system sys = {&dot_y2, 
                            NULL, 
                            params->n, 
                            params};
@@ -147,11 +149,13 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   GET_READ_DOUBLE_HANDLE(gain, g_array);
   int err;
   ctrnn_params params;
+  int cleanup_vision = 0;
   params.n = scm_to_int(n);
   params.weights = w_array;
   params.time_constant = tc_array;
   params.bias = b_array;
   params.gain = g_array;
+  scm_t_array_handle ty2_handle; 
   if (scm_is_false(input_func)) {
     params.input = NULL;
     params.user = NULL;
@@ -169,8 +173,13 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
 
     params.input = vision_input; // C vision implementation.
     struct vision_args vargs;
-    vargs.ty = ty_array;
-    list = scm_cdr(list); // Skip element 1.
+    SCM ty2 = scm_car(list);
+    // Can't use the macro because of scope issues.
+    //GET_DOUBLE_HANDLE(ty2, ty2_array);
+    scm_array_get_handle(ty2, &ty2_handle); 
+    const double* ty2_array = scm_array_handle_f64_elements(&ty2_handle);
+    vargs.ty = ty2_array;
+    list = scm_cdr(list); 
     vargs.m = scm_to_int(scm_car(list));
     list = scm_cdr(list); 
     vargs.n = scm_to_int(scm_car(list));
@@ -199,13 +208,18 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
     }
     setup_vision_args(&vargs);
     params.user = &vargs;
+    cleanup_vision = 1;
   } else {
     scm_throw(C_STRING_TO_SYMBOL("invalid-input-func"), SCM_EOL);
     return SCM_BOOL_F;
   }
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
 
-  //teardown_vision_args(params.user);
+  if (cleanup_vision) {
+    struct vision_args *vargs = (struct vision_args *)params.user;
+    teardown_vision_args(vargs);
+    scm_array_handle_release(&ty2_handle);
+  }
 
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(weights);
@@ -246,6 +260,7 @@ void init_ctrnn(void)
 #ifndef SCM_MAGIC_SNARFER 
 #include "ctrnn.c.x" 
 #endif
+  // FIXME This ends up placing the vision symbols into the ctrnn module.  
   init_vision();
 }
 @
@@ -287,7 +302,7 @@ void init_ctrnn(void)
  (gain #:getter gain #:init-keyword #:gain)
  (input-func #:accessor input-func #:init-keyword #:input-func))
 
- (export <ctrnn> input-func)
+ (export <ctrnn> input-func weights time-constant bias gain n)
 @ 
 
 <<Procedure>>=
@@ -316,8 +331,14 @@ void init_ctrnn(void)
                (random-weight)) (weights ctrnn)))
 
 (define-public (make-ctrnn-state ctrnn)
- (make-typed-array 'f64 0.0 (1+ (* 2 (n ctrnn))))
-  )
+;; why 2 times the number of nodes?
+ (make-typed-array 'f64 0.0 (1+  (n ctrnn))))
+
+(define-public (randomize-ctrnn-state! ctrnn-state)
+ (define (random-state)
+  (- 5 (random 10.)))
+ (vector-map! (lambda (x i)
+               (random-state)) ctrnn-state))
 @ 
 
 Now let's test it.  

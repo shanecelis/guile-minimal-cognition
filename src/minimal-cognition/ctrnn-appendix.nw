@@ -20,13 +20,13 @@
 #endif
 
 /* private prototypes */
-typedef double (*functor)(double f, size_t i, void* params);
+typedef double (*functor)(double f, int i, void* params);
 
 void gsl_vector_map(functor f, gsl_vector *x, void *params);
-double sigmoid(double x, size_t i, void * params);
-double fill_input(double t, size_t i, void *params);
-double invert(double x, size_t i, void * params);
-double hadamard(double x, size_t i, void * params);
+double sigmoid(double x, int i, void * params);
+double fill_input(double t, int i, void *params);
+double invert(double x, int i, void * params);
+double hadamard(double x, int i, void * params);
 int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output);
 
 <<Function>>
@@ -39,23 +39,27 @@ int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *ou
 \subsection{Map and Functors}
 
 <<Function>>=
-void gsl_vector_map(double (*f)(double f, size_t i, void* params), gsl_vector *x, void *params)
+void gsl_vector_map(functor f, gsl_vector *x, void *params)
 {
   for (int i = 0; i < x->size; i++)
     gsl_vector_set(x, i, f(gsl_vector_get(x, i), i, params));
 }
 
-double sigmoid(double x, size_t i, void * params)
-{
+double sigmoid(double x, int i, void * params)
+{ 
+  (void) i;
+  (void) params;
   return 1./(1. + exp(-x));
 }
 
-double invert(double x, size_t i, void * params)
+double invert(double x, int i, void * params)
 {
+  (void) i;
+  (void) params;
   return 1./x;
 }
 
-double hadamard(double x, size_t i, void * params)
+double hadamard(double x, int i, void * params)
 {
   gsl_vector *v = (gsl_vector *)params;
   return x*gsl_vector_get(v, i);
@@ -94,7 +98,7 @@ gsl_vector_const_view B = gsl_vector_const_view_array(cparams->bias, cparams->n)
 gsl_vector_const_view Y = gsl_vector_const_view_array(y, cparams->n);
 gsl_vector_view Rview = gsl_vector_view_array(dydt, cparams->n);//gsl_vector_alloc(cparams->n);
 gsl_vector* R = &Rview.vector;
-gsl_vector* temp = gsl_vector_alloc(cparams->n); // R' just a temp va
+gsl_vector* temp = gsl_vector_alloc(cparams->n); // Just a temp variable
 @ 
 
 <<Teardown matrices.>>=
@@ -139,11 +143,11 @@ gsl_blas_daxpy(1.0, &Y.vector, R);
 
 <<Compute $R \set G \circ R$.>>=
 gsl_vector_const_view G = gsl_vector_const_view_array(cparams->gain, cparams->n);
-gsl_vector_map(hadamard, R, (void *) &G.vector);
+gsl_vector_map(hadamard, R, (const void *) &G.vector);
 @
 
 <<Function>>=
-double fill_input(double t, size_t i, void *params)
+double fill_input(double t, int i, void *params)
 {
   ctrnn_params *cparams = (ctrnn_params *) params;
   double output;
@@ -179,6 +183,8 @@ double fill_input(double t, size_t i, void *params)
 #include <stdio.h>
 
 int main(int argc, char **argv) {
+    (void) argc;
+    (void) argv;
     //plan(1)
     double gain = 1.0;
     double bias = 1.0;

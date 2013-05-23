@@ -1,0 +1,4 @@
+#!/bin/bash
+
+export USE_C_VISION_INPUT=1
+runtests vision-test.scm

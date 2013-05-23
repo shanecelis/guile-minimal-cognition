@@ -22,6 +22,9 @@ objects that are falling, excluding the agent, and $n$ objects total.
 typedef struct fode_params {
   int n;
   const double *k;
+  // XXX Consider changing this to a zero-based index.
+  /* The effector function is called with with args (t, 1, params) and 
+     (t, 2, params). */
   double (*effector)(double t, int i, struct fode_params *params);
   void * user;
 } fode_params;
@@ -64,18 +67,6 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
             (SCM ty, SCM h, SCM n, SCM k, SCM effector_func),
             "Move fode forward a single time step.")
 {
-#define GET_DOUBLE_HANDLE(scm_var, double_array) \
-  scm_t_array_handle scm_var ## _handle; \
-  scm_array_get_handle(scm_var, &scm_var ## _handle); \
-  double* double_array = scm_array_handle_f64_writable_elements(&scm_var ## _handle);
-
-#define GET_READ_DOUBLE_HANDLE(scm_var, double_array) \
-  scm_t_array_handle scm_var ## _handle; \
-  scm_array_get_handle(scm_var, &scm_var ## _handle); \
-  const double* double_array = scm_array_handle_f64_elements(&scm_var ## _handle);
-
-#define RELEASE_HANDLE(scm_var) \
-  scm_array_handle_release(&scm_var ## _handle);
 
   GET_DOUBLE_HANDLE(ty, ty_array);
   GET_READ_DOUBLE_HANDLE(k, k_array);
@@ -86,10 +77,14 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
   if (scm_is_false(effector_func)) {
     params.effector = NULL;
     params.user = NULL;
-  } else {
+  } else if (scm_is_true(scm_procedure_p(effector_func))) {
     params.effector = call_scm_effector_func;
     params.user = effector_func;
-  }
+  } else {
+    // XXX FIXME Throw an exception.
+    scm_throw(C_STRING_TO_SYMBOL("invalid-effector"), scm_list_1(effector_func));
+    return SCM_BOOL_F;
+  } 
   step_fode(ty_array, scm_to_double(h), &params);
 
   RELEASE_HANDLE(ty);
@@ -190,6 +185,8 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 #include "fode.h"
 #include "math.h"
 <<Include GSL headers.>>
+
+#include "ctrnn.h" // We need some of the macros.  XXX split into util.h maybe.
 #endif
 
 <<Function>>

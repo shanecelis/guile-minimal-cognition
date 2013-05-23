@@ -319,7 +319,21 @@ Great, now let's basically do the same tests but with this new form.
 (check (vision-input t 4) (=> fe:=?) 1)
 (check (vision-input t 5) (=> fe:=?) 0)
 
+;; Change the agent position.
+(set! x1 -0.5)
+
+(set! ty (vector t x1 y1 x2 y2 x3 y3))
+(set! vision-input (make-vision-input ty m n d r D Theta D))
+(check (vision-input t 0) (=> fe:=?) 2.5)
+(check (vision-input t 1) (=> fe:=?) 10)
+(check (vision-input t 2) (=> fe:=?) 10)
+;(check (vision-input t 3) (=> fe:=?) (1- (sqrt 2)))
+(check (vision-input t 4) (=> fe:=?) 1.5)
+(check (vision-input t 5) (=> fe:=?) 0)
+(set! x1 0)
+
 (set! r 0.5) ;; radius of objects
+(set! ty (vector t x1 y1 x2 y2 x3 y3))
 (set! vision-input (make-vision-input ty m n d r D Theta D))
 (check (vision-input t 0) (=> fe:=?) 3.5)
 (check (vision-input t 1) (=> fe:=?) 10)
@@ -373,9 +387,9 @@ the speed.  We need a structure to hold all the arguments.
 
 <<Structure>>=
 struct vision_args {
-  double *ty; // time and state variables
-  size_t m; // number of objects
-  size_t n; // number of sensors
+  const double *ty; // time and state variables
+  int m; // number of objects
+  int n; // number of sensors
   double d; //agent diameter
   double r; // object radius
   double D; // max distance
@@ -390,12 +404,12 @@ struct vision_args {
 <<Function>>=
 void setup_vision_args(struct vision_args *args) 
 {
-  double theta_1 = args->Theta / 2. + M_PI_2;
+  double theta_1 =  M_PI_2 + args->Theta / 2.;
   double delta_theta = -args->Theta / (args->n - 1);
   if (args->R == NULL) {
     args->R = malloc(args->n * sizeof(gsl_matrix *));
     for (int i = 0; i < args->n; i++) {
-      double theta_i = i * delta_theta - theta_1;
+      double theta_i = i * delta_theta + theta_1;
       args->R[i] = gsl_matrix_alloc(2, 2);
       <<Setup rotation matrix.>>
     }
@@ -416,19 +430,26 @@ void teardown_vision_args(struct vision_args *args)
 }
 @ 
 
+This rotation matrix will rotate a 2D vector by a positive $\theta_i$
+clockwise, and a negative $\theta_i$ counter-clockwise.  (I believe
+this is in direction opposition to how it was done in the Scheme code.
+Oops.)
+
 \begin{align}
   R_i &= \begin{bmatrix}
-       cos(\theta_i) & sin(\theta_i) \\
-       -sin(\theta_i) & cos(\theta_i) \\
+       cos(\theta_i) & -sin(\theta_i) \\
+       sin(\theta_i) & cos(\theta_i) \\
        \end{bmatrix}
 \end{align}
 
 <<Setup rotation matrix.>>=
     double c = cos(theta_i);
     double s = sin(theta_i);
+// Column 1
     gsl_matrix_set(args->R[i], 0, 0, c);
-    gsl_matrix_set(args->R[i], 0, 1, s);
-    gsl_matrix_set(args->R[i], 1, 0, -s);
+    gsl_matrix_set(args->R[i], 1, 0, s);
+// Column 2
+    gsl_matrix_set(args->R[i], 0, 1, -s);
     gsl_matrix_set(args->R[i], 1, 1, c);
 @ 
 
@@ -448,21 +469,20 @@ int vision_input (double t, int i, struct ctrnn_params *params, double *output)
 
   int err;
   double min_distance = args->D;
-  double xc, yc; /* Closest object position (xc, yc). */
-  // Set xc and yc to the maximum distance point.
-  <<Compute $(x_c, y_c) \set R \, (D, 0)$>>
-  // Add the sensor position.
-  <<Compute $(x_c, y_c) \set (x_c, y_c) + (x_0, y_0)$>>
   for (int j = 1; j <= args->m; j++) {
     double distance;
+    double x3, y3;
     <<$distance \set $ distance between sensor i and object j.>>
-    if (! err && min_distance >= distance) {
+    if (! err && min_distance > distance) {
       min_distance = distance;
-      xc = x3;
-      yc = y3;
     }
   }
   if (args->sight_listener) {
+    double xc, yc; /* Closest object position (xc, yc). */
+    // Set xc and yc to the minimum distance point.
+    <<Compute $(x_c, y_c) \set R \, (min_distance, 0)$>>
+    // Add the sensor position.
+    <<Compute $(x_c, y_c) \set (x_c, y_c) + (x_0, y_0)$>>
     args->sight_listener(OBJECT_X(args->ty, 0), OBJECT_Y(args->ty, 0), xc, yc, args);
   }
   <<Normalize by [[max_output]].>>
@@ -479,13 +499,14 @@ min_distance *= args->max_output/args->D;
 @ 
 
 We want to set $(x_c, y_c)$ to the maximum distance.
-<<Compute $(x_c, y_c) \set R \, (D, 0)$>>=
+<<Compute $(x_c, y_c) \set R \, (min_distance, 0)$>>=
 static gsl_vector* pc = NULL, *pcp;
 if (pc == NULL) {
   pc = gsl_vector_alloc(2);
   pcp = gsl_vector_alloc(2);
 }
-gsl_vector_set(pcp, 0, args->D);
+gsl_vector_set(pcp, 0, min_distance);
+assert(min_distance > 0.);
 gsl_vector_set(pcp, 1, 0.);
 err = gsl_blas_dgemv (CblasNoTrans, 1.0, args->R[i], pcp, 0.0, pc);
 if (err != GSL_SUCCESS) return GSL_EBADFUNC;
@@ -511,7 +532,6 @@ yc = gsl_vector_get(pc, 1);
 @ 
 
 <<$distance \set $ distance between sensor i and object j.>>=
-double x3, y3;
 err = intersection_with_circle(
                                    OBJECT_X(args->ty, 0),
                                    OBJECT_Y(args->ty, 0),
@@ -520,7 +540,11 @@ err = intersection_with_circle(
                                    OBJECT_Y(args->ty, j),
                                    args->r,
                                    &x3, &y3);
-distance = sqrt(x3 * x3 + y3 * y3) - args->d/2.0;
+// Look at the distance between agent and object.
+double xr = x3 - OBJECT_X(args->ty, 0);
+double yr = y3 - OBJECT_Y(args->ty, 0);
+
+distance = sqrt(xr * xr + yr * yr) - args->d/2.0;
 @
 
 <<Macro>>=
@@ -567,7 +591,7 @@ int intersection_with_circle(double x1, double y1,
 
   int err;
   // FIXME Can't use $p_2'$ in the noweb fragment name. :( 
-  <<Compute $p_2^* \set R\ (p_2 - p_1)$.>>
+  <<Compute $p_2^* \set R^T\ (p_2 - p_1)$.>>
   err = intersection_with_circle_specific(gsl_vector_get(p2p, 0),
                                           gsl_vector_get(p2p, 1),
                                           r, 
@@ -585,7 +609,7 @@ int intersection_with_circle(double x1, double y1,
 }
 @ 
 
-<<Compute $p_2^* \set R\ (p_2 - p_1)$.>>=
+<<Compute $p_2^* \set R^T\ (p_2 - p_1)$.>>=
   /* err = gsl_blas_dcopy(p2, p2p); */
   /* assert(err == 0); */
   /* if (err != GSL_SUCCESS) return GSL_EBADFUNC; */
@@ -593,7 +617,7 @@ int intersection_with_circle(double x1, double y1,
   assert(err == 0);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
   // You cannot use x <- R x. It will destroy everything.
-  err = gsl_blas_dgemv (CblasNoTrans, 1.0, R, p2, 0.0, p2p);
+  err = gsl_blas_dgemv (CblasTrans, 1.0, R, p2, 0.0, p2p);
   assert(err == 0);
   if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 @
@@ -617,6 +641,7 @@ void call_scm_sight_listener_func(double x1, double y1, double x2, double y2, st
   scm_c_vector_set_x(p2, 1, scm_from_double(y2));
 
   SCM res = scm_call_2((SCM) vargs->user, p1, p2);
+  (void) res;
 }
 @ 
 
@@ -718,6 +743,7 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
   double output;
   int err = vision_input(scm_to_double(t), scm_to_int(i), &cparams, &output);
   teardown_vision_args(&vargs);
+  RELEASE_HANDLE(ty);
   if (err)
     scm_throw(C_STRING_TO_SYMBOL("c-vision-input-error"), scm_list_1(scm_from_int(err)));
   else
