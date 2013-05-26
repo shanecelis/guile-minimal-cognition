@@ -47,13 +47,16 @@ int step_fode(double *ty, double h, fode_params *params)
   double *t = ty;
   gsl_odeiv2_system sys = {&dot_fode, 
                            NULL, 
-                           params->n * 2, params};
+                           params->n * 2, 
+                           params};
   gsl_odeiv2_driver * d = 
          gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rk2,
                                               //gsl_odeiv2_step_rkf45,
                                         1e-2, 1e-6, 0.0);
 
-  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+  //int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+  
+  int status = gsl_odeiv2_driver_apply_fixed_step (d, t, h, 1, y);
      
   gsl_odeiv2_driver_free (d);
   return status;
@@ -81,15 +84,14 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
     params.effector = call_scm_effector_func;
     params.user = effector_func;
   } else {
-    // XXX FIXME Throw an exception.
     scm_throw(C_STRING_TO_SYMBOL("invalid-effector"), scm_list_1(effector_func));
     return SCM_BOOL_F;
   } 
-  step_fode(ty_array, scm_to_double(h), &params);
+  int err = step_fode(ty_array, scm_to_double(h), &params);
 
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(k);
-  return SCM_BOOL_T;
+  return err == 0 ? SCM_BOOL_T : SCM_BOOL_F;
 }
 @ 
 
@@ -137,21 +139,61 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
          fode))
 @ 
 
-<<Procedure>>=
-(define-public (object-x ty i)
-"Return the x coordinate of object 0 is the agent, object 1 is the first object, etc."
-  (: ty @ ((2 * i) + 1))        
-)
+Let's be sane and made some accessors for these parameter and state objects.
 
-(define-public (object-y ty i)
-"Return the y coordinate of object 0 is the agent, object 1 is the first object, etc."
- (: ty @ ((2 * i) + 2))        
-)
+<<Procedure>>=
+(define (object-vx-ref k i)
+  "Return the x coordinate of object i."
+  (: k @ (2 * i)))
+
+(define (object-vx-set! k i v)
+  "Return the x coordinate of object i."
+  (: k @ (2 * i) := v))
+
+(define (object-vy-ref k i)
+  "Return the x coordinate of object i."
+  (: k @ ((2 * i) + 1)))
+
+(define (object-vy-set! k i v)
+  "Return the x coordinate of object i."
+  (: k @ ((2 * i) + 1) := v))
+
+(define-public object-vx (make-procedure-with-setter object-vx-ref object-vx-set!))
+(define-public object-vy (make-procedure-with-setter object-vy-ref object-vy-set!))
+@
+
+<<Procedure>>=
+
+(define-public (fode-time ty)
+  (: ty @ 0))
+(define (object-x-ref ty i)
+"Return the x coordinate of object i."
+  (: ty @ ((2 * i) + 1)))
+
+(define (object-x-set! ty i v)
+"Set the x coordinate of object i to v."
+  (: ty @ ((2 * i) + 1) := v))
+
+(define (object-y-ref ty i)
+"Return the y coordinate of object i."
+ (: ty @ ((2 * i) + 2)))
+
+(define (object-y-set! ty i v)
+"Set the y coordinate of object i to v."        
+(: ty @ ((2 * i) + 2) := v))
+
+(define-public object-x (make-procedure-with-setter object-x-ref object-x-set!))
+(define-public object-y (make-procedure-with-setter object-y-ref object-y-set!))
 @ 
 
 <<test>>=
 (check (procedure? step-fode) => #t)
 (define yt #f64(0. 0. 0.))
+(check (procedure-with-setter? object-y) => #t)
+(check (object-y yt 0) => 0.)
+(set! (object-y yt 0) 1.)
+(check (object-y yt 0) => 1.)
+(set! (object-y yt 0) 0.)
 (define h 0.1)
 (define p1 (make-fode 1))
 (check (step-fode yt h p1) => #t)

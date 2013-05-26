@@ -52,8 +52,7 @@ typedef struct ctrnn_params {
   const double *weights; /* n x n real numbers */
   const double *time_constant; /* n real numbers */
   const double *bias; /* n real numbers */
-  const double *gain;
-  //ctrnn_input input;
+  const double *gain; /* n real numbers */
   int (*input)(double t, int i, struct ctrnn_params *params, double *output);
   void   *user;
 } ctrnn_params;
@@ -102,6 +101,7 @@ int dot_y2(double t, const double *y, double *dydt, void *params)
   <<Compute $R \set R + I(t)$.>>
   <<Compute $R \set R \circ T^{-1}$.>>
   <<Teardown matrices.>>
+  //printf ("%f\n", *dydt);
   return GSL_SUCCESS;
 }
 @ 
@@ -119,10 +119,15 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
                            params->n, 
                            params};
   gsl_odeiv2_driver * d = 
-         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rkf45,
-                                        1e-2, 1e-6, 0.0);
+         gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rk2,
+                                              //gsl_odeiv2_step_rkf45,
+                                        h, 
+                                        1e-1, 
+                                        0.0);
 
-  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+//  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
+  
+  int status = gsl_odeiv2_driver_apply_fixed_step (d, t, h, 1, y);
      
   gsl_odeiv2_driver_free (d);
   return status;
@@ -141,7 +146,6 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
              SCM time_constant, SCM bias, SCM gain, SCM input_func),
             "Move a CTRNN forward a single time step.")
 {
-
   GET_DOUBLE_HANDLE(ty, ty_array);
   GET_READ_DOUBLE_HANDLE(weights, w_array);
   GET_READ_DOUBLE_HANDLE(time_constant, tc_array);
@@ -156,6 +160,7 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   params.bias = b_array;
   params.gain = g_array;
   scm_t_array_handle ty2_handle; 
+  int scm_err = 0;
   if (scm_is_false(input_func)) {
     params.input = NULL;
     params.user = NULL;
@@ -203,29 +208,37 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
       vargs.user = scm_car(list);
       list = scm_cdr(list); 
     } else {
-      // Expect nothing or a procedure.
-      scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+      scm_err = 1;
+      goto invalid_sight_listener_arg;
     }
     setup_vision_args(&vargs);
     params.user = &vargs;
     cleanup_vision = 1;
   } else {
-    scm_throw(C_STRING_TO_SYMBOL("invalid-input-func"), SCM_EOL);
-    return SCM_BOOL_F;
+    scm_err = 2;
+    goto invalid_input_func;
   }
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
 
+invalid_sight_listener_arg:
   if (cleanup_vision) {
     struct vision_args *vargs = (struct vision_args *)params.user;
     teardown_vision_args(vargs);
     scm_array_handle_release(&ty2_handle);
   }
 
+invalid_input_func:
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(weights);
   RELEASE_HANDLE(time_constant);
   RELEASE_HANDLE(bias);
   RELEASE_HANDLE(gain);
+  if (scm_err == 1) 
+    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+  else if (scm_err == 2)
+    scm_throw(C_STRING_TO_SYMBOL("invalid-input-func"), SCM_EOL);
+  
+  //printf ("err %d %s\n", err, gsl_strerror (err));
   return err == 0 ? SCM_BOOL_T : SCM_BOOL_F;
 }
 @ 
@@ -336,9 +349,12 @@ void init_ctrnn(void)
 
 (define-public (randomize-ctrnn-state! ctrnn-state)
  (define (random-state)
-  (- 5 (random 10.)))
+  (- 0.1 (random 0.2)))
  (vector-map! (lambda (x i)
-               (random-state)) ctrnn-state))
+               (random-state)) ctrnn-state)
+ (generalized-vector-set! ctrnn-state 0 0.) ;; Set the time component to 0.
+ ctrnn-state
+)
 @ 
 
 Now let's test it.  
@@ -358,7 +374,10 @@ Now let's test it.
 (check (weights c) => #f64(0.0))
 (check (array-dimensions (time-constant c)) => '(1))
 (check (step-ctrnn y 0.01 c) => #t)
-(define y* (copy-array #f64(0.01 0.10398)))
+;; right value for dot_y1
+;(define y* (copy-array #f64(0.01 0.10398)))
+;; right value for dot_y2
+(define y* (copy-array #f64(0.01 0.09900)))
 (check y (=> =?) y*)
 (set! y (copy-array #f64(0.0 0.1)))
 (check y (=> =?) #f64(0.0 0.1))
@@ -412,14 +431,52 @@ Now, let's convert this genome to a ctrnn.
   (define (remap a b vector)
     (vector-map! (lambda (x i)
                    (+ a (* (/ (+ x 1.0) 2) (- b a)))) vector))
+  (format #t "GENOME ~a ... ~%" (generalized-vector-ref genome 0))
   (let ((n (n ctrnn))
         (i 0))
-    (remap -5 5 (vector-move!* (weights ctrnn) 0 (1- (* n n)) genome i (1- (incr! i (* n n)))))
+    (remap -5 5 (vector-move!* (weights ctrnn) 0 (1- (* n n)) 
+                               genome i (1- (incr! i (* n n)))))
    
-    (remap 1 2 (vector-move!* (time-constant ctrnn) 0 (1- n) genome i (1- (incr! i n))))
-    (remap -10 0 (vector-move!* (bias ctrnn)          0 (1- n) genome i (1- (incr! i n))))
-    (remap 1 5 (vector-move!* (gain ctrnn)          0 (1- n) genome i (1- (incr! i n)))))
+    (remap 1 2 (vector-move!* (time-constant ctrnn) 0 (1- n) 
+                              genome i (1- (incr! i n))))
+    (remap -10 0 (vector-move!* (bias ctrnn)          0 (1- n) 
+                                genome i (1- (incr! i n))))
+    (remap 1 5 (vector-move!* (gain ctrnn)          0 (1- n) 
+                              genome i (1- (incr! i n))))
+    
+    )
   ctrnn)
+@ 
+
+I've already been bitten by a genome conversion bug, so let's write a
+test that checks the conversion with a genome of all 1s.
+
+<<test>>=
+(define g1 (make-genome-for-n-ctrnn 1))
+(array-fill! g1 1.0) ;; max it out.
+(define c1 (make-n-ctrnn 1))
+(genome->ctrnn g1 c1)
+(check g1 => #f64(1. 1. 1. 1.))
+(check (n c1) => 1)
+(check (weights c1) => #f64(5.))
+(check (time-constant c1) => #f64(2.))
+(check (bias c1) => #f64(0.))
+(check (gain c1) => #f64(5.))
+(check (input-func c1) => #f)
+@ 
+
+Let's write a test that checks the conversion with a genome of all 0s.
+
+<<test>>=
+(array-fill! g1 -1.0) ;; min it out.
+(genome->ctrnn g1 c1)
+(check g1 => #f64(-1. -1. -1. -1.))
+(check (n c1) => 1)
+(check (weights c1) => #f64(-5.))
+(check (time-constant c1) => #f64(1.))
+(check (bias c1) => #f64(-10.))
+(check (gain c1) => #f64(1.))
+(check (input-func c1) => #f)
 @ 
 
 <<test>>=
