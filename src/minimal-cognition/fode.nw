@@ -52,7 +52,9 @@ int step_fode(double *ty, double h, fode_params *params)
   gsl_odeiv2_driver * d = 
          gsl_odeiv2_driver_alloc_y_new (&sys, gsl_odeiv2_step_rk2,
                                               //gsl_odeiv2_step_rkf45,
-                                        1e-2, 1e-6, 0.0);
+                                        h, 
+                                        1e-1, 
+                                        1e-1);
 
   //int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
   

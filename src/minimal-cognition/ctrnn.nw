@@ -123,7 +123,7 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
                                               //gsl_odeiv2_step_rkf45,
                                         h, 
                                         1e-1, 
-                                        0.0);
+                                        1e-1);
 
 //  int status = gsl_odeiv2_driver_apply (d, t, *t + h, y);
   
@@ -431,7 +431,7 @@ Now, let's convert this genome to a ctrnn.
   (define (remap a b vector)
     (vector-map! (lambda (x i)
                    (+ a (* (/ (+ x 1.0) 2) (- b a)))) vector))
-  (format #t "GENOME ~a ... ~%" (generalized-vector-ref genome 0))
+  #;(format #t "GENOME ~a ... ~%" (generalized-vector-ref genome 0))
   (let ((n (n ctrnn))
         (i 0))
     (remap -5 5 (vector-move!* (weights ctrnn) 0 (1- (* n n)) 
