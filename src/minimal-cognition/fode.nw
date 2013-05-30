@@ -28,6 +28,8 @@ typedef struct fode_params {
   double (*effector)(double t, int i, struct fode_params *params);
   void * user;
 } fode_params;
+
+void init_fode (void);
 @ 
 
 <<Function>>=
@@ -79,7 +81,7 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
   fode_params params;
   params.n = scm_to_int(n);
   params.k = k_array;
-  if (scm_is_false(effector_func)) {
+  if (scm_is_bool(effector_func) && scm_is_false(effector_func)) {
     params.effector = NULL;
     params.user = NULL;
   } else if (scm_is_true(scm_procedure_p(effector_func))) {
@@ -101,7 +103,8 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
 double call_scm_effector_func(double t, int i, struct fode_params *params)
 {
   SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
-  return scm_to_double(res);
+  double result =  scm_to_double(res);
+  return result;
 }
 @ 
 
@@ -249,8 +252,12 @@ gsl_vector_memcpy(R, &K.vector);
 @
 
 <<Compute $R_1 \set R_1 (E_1 - E_2)$.>>=
-if (pparams->effector)
-  gsl_vector_set(R, 0, gsl_vector_get(R, 0) * (pparams->effector(t, 1, pparams) - pparams->effector(t, 2, pparams)));
+if (pparams->effector) {
+  gsl_vector_set(R, 0, 
+                    gsl_vector_get(R, 0) 
+                    * (pparams->effector(t, 1, pparams) 
+                     - pparams->effector(t, 2, pparams)));
+}
 @
 
 <<Initialize>>=
