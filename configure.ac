@@ -85,4 +85,7 @@ AC_CONFIG_FILES([ Makefile
                   tests/works-without-noweb.sh
                   tests/print-install.sh
                   ], [chmod +x bin/runtests])
+AC_CONFIG_FILES([ src/minimal-cognition/c-vision-test ],
+                [ chmod +x src/minimal-cognition/c-vision-test ])
+
 AC_OUTPUT

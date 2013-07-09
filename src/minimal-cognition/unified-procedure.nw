@@ -1,0 +1,212 @@
+\section{Unified Procedure}
+
+I need to be able to call a Scheme procedure or a C function in either
+Scheme or C without really caring which way it's implemented.  This
+makes it much easier to substitute a Scheme procedure with a C
+function or vice versa.
+
+If I call a C function from C, Scheme is never entered---good for
+performance.  In other cases, it will go back and forth between C and
+Scheme as necessary.  This is intended strictly for performance
+enhancements and necessarily interoperability between C and Scheme.
+
+Because the main purpose of this library is interoperability with C, I
+will write it mainly in terms of C primitives.
+
+<<file:unified-procedure.scm>>=
+;; XXX this should not be in the minimal-cognition module.
+(define-module (minimal-cognition unified-procedure)
+  #:export (make-unified-procedure
+            unified-procedure?
+            unified-c-function-pointer))
+
+(load-extension "libguile-unified-procedure" "init_unified_procedure")
+@ 
+
+<<file:unified-procedure.c>>=
+#include <libguile.h>
+#ifndef SCM_MAGIC_SNARFER
+#include "unified-procedure.h"
+#endif
+<<macro>>
+
+<<primitive>>
+
+<<initialize>>
+@ 
+
+<<macro>>=
+#define C_STRING_TO_SYMBOL(str) scm_string_to_symbol(scm_from_locale_string(str))
+@ 
+
+
+<<file:unified-procedure.h>>=
+#include <libguile.h>
+
+SCM scm_make_unified_procedure(SCM return_type, SCM proc, SCM arg_types);
+SCM scm_unified_procedure_p(SCM proc);
+SCM scm_unified_c_function_pointer(SCM proc);
+@ 
+
+<<primitive>>=
+SCM_DEFINE (scm_make_unified_procedure, "make-unified-procedure", 
+            3, 0, 0,
+            (SCM return_type, SCM proc, SCM arg_types),
+            "Make a unified-procedure from a Scheme procedure or a C function pointer.")
+{
+  SCM scheme_procedure = SCM_BOOL_F;
+  SCM c_function_pointer = SCM_BOOL_F;
+  if (scm_is_true(scm_procedure_p(proc))) {
+    // We have a scheme procedure; let's create the c-function-pointer
+    scheme_procedure = proc;
+    c_function_pointer = scm_procedure_to_pointer(return_type, scheme_procedure, arg_types);
+  } else if (scm_is_true(scm_pointer_p(proc))) {
+    // We have a C function pointer; let's create a scheme procedure.
+    c_function_pointer = proc;
+    scheme_procedure = scm_pointer_to_procedure(return_type, c_function_pointer, arg_types);
+  } else {
+    scm_throw(C_STRING_TO_SYMBOL("expected-procedure-or-pointer"), 
+              scm_list_1(proc));
+  }
+
+  scm_set_procedure_property_x(scheme_procedure, C_STRING_TO_SYMBOL("unified-c-function-pointer"), c_function_pointer);
+  return scheme_procedure;
+}
+@ 
+
+<<primitive>>=
+SCM_DEFINE (scm_unified_procedure_p, "unified-procedure?", 
+            1, 0, 0,
+            (SCM proc),
+            "Return true if this is a unified-procedure.")
+{
+  if (scm_is_false(scm_procedure_p(proc)))
+    return SCM_BOOL_F;
+  SCM pointer = scm_procedure_property(proc, C_STRING_TO_SYMBOL("unified-c-function-pointer"));
+  return scm_is_false(pointer) ? SCM_BOOL_F : SCM_BOOL_T;
+}
+@ 
+<<primitive>>=
+SCM_DEFINE (scm_unified_c_function_pointer, "unified-c-function-pointer", 
+            1, 0, 0,
+            (SCM proc),
+            "Return a C function pointer for this procedure if it has one, otherwise error.")
+{
+  if (scm_is_false(scm_unified_procedure_p(proc))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-unified-procedure"), 
+                scm_list_1(proc));
+  }
+  SCM pointer = scm_procedure_property(proc, C_STRING_TO_SYMBOL("unified-c-function-pointer"));
+  return pointer;
+}
+@ 
+
+<<primitive>>=
+int c_incr(int x) {
+  return x + 1;
+}
+
+void c_incr_x(int *x) {
+  *x = *x + 1;
+}
+@ 
+
+<<primitive>>=
+SCM_DEFINE (scm_unified_call_1, "unified-call-1", 
+            2, 0, 0,
+            (SCM proc, SCM arg),
+            ".")
+{
+  int (*input)(int);
+  if (scm_is_true(scm_unified_procedure_p (proc))) {
+    SCM input_pointer = scm_unified_c_function_pointer(proc);
+    input = scm_to_pointer(input_pointer);
+  } else {
+      scm_throw(C_STRING_TO_SYMBOL("expected-unified-procedure"), 
+      scm_list_1(proc));
+  }
+  return scm_from_int(input(scm_to_int(arg)));
+}
+@
+
+<<initialize>>=
+void init_unified_procedure(void)
+{
+#ifndef SCM_MAGIC_SNARFER 
+#include "unified-procedure.c.x"
+#endif
+}
+@
+
+
+\subsection{Test the C Implementation}
+
+Mainly we just want to make sure everything is linking.
+<<file:unified-procedure-test.c>>=
+#include "unified-procedure.h"
+
+int main(int argc, char **argv)
+{
+  SCM proc = SCM_BOOL_F;
+  return scm_is_false(scm_unified_procedure_p(proc)) ? 0 : 1;
+}
+@ 
+
+\subsection{Scheme Tests}
+
+<<file:unified-procedure-test.scm>>=
+(use-modules (srfi srfi-64)
+             (minimal-cognition unified-procedure)
+             (system foreign)
+             (rnrs bytevectors)
+             )
+
+(define (incr x)
+  (+ x 1))
+(define unified-call-1 (@@ (minimal-cognition unified-procedure) unified-call-1))
+(test-begin "Scheme Procedure")
+(test-assert (not (unified-procedure? incr)))
+
+(define incr-up (make-unified-procedure int incr (list int)))
+(test-assert (unified-procedure? incr))
+(test-equal (incr 1) 2)
+(test-equal (incr-up 1) 2)
+(test-equal (unified-call-1 incr-up 1) 2)
+(test-end)
+
+(test-begin "C Function Pointer")
+(define up-lib (dynamic-link "libguile-unified-procedure"))
+(test-assert (dynamic-object? up-lib))
+(define c-incr-pointer (dynamic-func "c_incr" up-lib))
+(test-assert (pointer? c-incr-pointer))
+(define c-incr-up (make-unified-procedure int c-incr-pointer (list int)))
+
+(test-assert (unified-procedure? c-incr-up))
+(test-equal (c-incr-up 1) 2)
+(test-equal (c-incr-up 1) 2)
+
+(test-equal (unified-call-1 c-incr-up 1) 2)
+(test-end)
+
+(test-begin "C Function Pointer With Byte Vector")
+
+(define c-incr-x-pointer (dynamic-func "c_incr_x" up-lib))
+(test-assert (pointer? c-incr-x-pointer))
+(define c-incr-x-up (make-unified-procedure void c-incr-x-pointer (list '*)))
+
+(test-assert (unified-procedure? c-incr-x-up))
+(define x 1)
+(define bv (make-bytevector (sizeof int)))
+(define &x (bytevector->pointer bv))
+(define (*x)
+  (bytevector-sint-ref bv 0 (native-endianness) (sizeof int)))
+(bytevector-sint-set! bv 0 x (native-endianness) (sizeof int))
+(test-equal (*x) 1)
+(c-incr-x-up &x)
+(test-equal (*x) 2)
+(c-incr-x-up &x)
+(test-equal (*x) 3)
+(test-end)
+
+(exit (= (test-runner-fail-count (test-runner-current)) 0))
+@

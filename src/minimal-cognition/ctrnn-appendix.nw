@@ -16,7 +16,7 @@
 #include "ctrnn.h"
 #include "math.h"
 <<Include GSL headers.>>
-#include "vision.h"
+#include "unified-procedure.h"
 #endif
 
 /* private prototypes */

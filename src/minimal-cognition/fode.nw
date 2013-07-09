@@ -70,8 +70,8 @@ int step_fode(double *ty, double h, fode_params *params)
 \subsection{Scheme}
 
 <<Primitive>>=
-SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
-            (SCM ty, SCM h, SCM n, SCM k, SCM effector_func),
+SCM_DEFINE (scm_step_fode, "step-fode*", 6, 0, 0,
+            (SCM ty, SCM h, SCM step_count, SCM n, SCM k, SCM effector_func),
             "Move fode forward a single time step.")
 {
 
@@ -91,7 +91,12 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 5, 0, 0,
     scm_throw(C_STRING_TO_SYMBOL("invalid-effector"), scm_list_1(effector_func));
     return SCM_BOOL_F;
   } 
-  int err = step_fode(ty_array, scm_to_double(h), &params);
+  int count = scm_to_int(step_count);
+
+  int err = 0;
+  for (int i = 0; i < count && ! err; i++) {
+    err = step_fode(ty_array, scm_to_double(h), &params);
+  }
 
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(k);
@@ -132,15 +137,16 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 
 <<Procedure>>=
 (define-public (make-fode-state fode)
-   (make-typed-array 'f64 0.0 (1+ (* 2 (car fode))))
+  (make-typed-array 'f64 0.0 (1+ (* 2 (car fode))))
 )
 @ 
 
 <<Procedure>>=
-(define-public (step-fode yt h fode)
+(define*-public (step-fode yt h fode #:optional (count 1))
   (apply step-fode*
          yt
          h
+         count
          fode))
 @ 
 
@@ -257,7 +263,9 @@ if (pparams->effector) {
                     gsl_vector_get(R, 0) 
                     * (pparams->effector(t, 1, pparams) 
                      - pparams->effector(t, 2, pparams)));
-}
+}/* else {
+  gsl_vector_set(R, 0, 0.);        
+}*/
 @
 
 <<Initialize>>=

@@ -6,11 +6,15 @@
 NOWEB_DOCS = ctrnn-paper.pdf vision-paper.pdf 
 EXTRA_DIST = $(NOWEB_DOCS)
 
-NOWEB_FILES = ctrnn.nw ctrnn-paper.nw ctrnn-appendix.nw fode.nw vision.nw 
+NOWEB_FILES = ctrnn.nw ctrnn-paper.nw ctrnn-appendix.nw fode.nw vision.nw \
+							unified-procedure.nw
 NOWEB_PRODUCTS = ctrnn.h ctrnn.c ctrnn.scm ctrnn-test.scm ctrnn-test.c \
 	               fode.h fode.c fode.scm fode-test.scm vision.scm \
-                 vision-test.scm vision.c vision.h vision-test.c
-BUILT_SOURCES = ctrnn.c.x fode.c.x vision.c.x
+                 vision-test.scm vision.c vision.h vision-test.c \
+								 unified-procedure.scm unified-procedure.c unified-procedure.h \
+							   unified-procedure-test.c unified-procedure-test.scm
+
+BUILT_SOURCES = ctrnn.c.x fode.c.x vision.c.x unified-procedure.c.x
 CLEANFILES = $(BUILT_SOURCES)
 
 doc: $(NOWEB_DOCS)
@@ -37,17 +41,20 @@ WARN_NOTANGLE_FLAGS = -W
 NOWEAVE_FLAGS = $(MARKUP_FLAGS)
 NOTANGLE_C_FLAGS = -c -L $(MARKUP_FLAGS)
 NOTANGLE_H_FLAGS = -L $(MARKUP_FLAGS)
-lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la libguile-vision.la
+lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la libguile-vision.la libguile-unified-procedure.la
 
 AM_CFLAGS = $(GUILE_CFLAGS) $(GSL_CFLAGS) 
 libguile_ctrnn_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
-libguile_ctrnn_la_SOURCES = ctrnn.c vision.c
-include_HEADERS = ctrnn.h vision.h
+libguile_ctrnn_la_SOURCES = ctrnn.c
+include_HEADERS = ctrnn.h 
 
 libguile_vision_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
 libguile_vision_la_SOURCES = vision.c
-include_HEADERS = vision.h
+include_HEADERS += vision.h
 
+libguile_unified_procedure_la_LIBADD  = $(GUILE_LIBS)
+libguile_unified_procedure_la_SOURCES = unified-procedure.c
+include_HEADERS += unified-procedure.h
 
 libguile_fode_la_LIBADD  = $(GSL_LIBS) $(GUILE_LIBS)
 libguile_fode_la_SOURCES = fode.c
@@ -58,16 +65,19 @@ MAINTAINERCLEANFILES = Makefile.in config.h.in
 guilemoduledir = $(GUILE_SITE_LIB)/$(PACKAGE_TARNAME)
 dist_guilemodule_DATA = ctrnn.scm
 
-check_PROGRAMS = ctrnn-ctest vision-ctest
-ctrnn_ctest_LDADD   = libguile-ctrnn.la
+check_PROGRAMS = ctrnn-ctest vision-ctest unified-procedure-ctest
+ctrnn_ctest_LDADD   = libguile-ctrnn.la libguile-unified-procedure.la
 ctrnn_ctest_SOURCES = ctrnn-test.c
 
-vision_ctest_LDADD   = libguile-ctrnn.la
+vision_ctest_LDADD   = libguile-ctrnn.la libguile-vision.la libguile-unified-procedure.la
 vision_ctest_SOURCES = vision-test.c
+
+unified_procedure_ctest_LDADD   = libguile-unified-procedure.la
+unified_procedure_ctest_SOURCES = unified-procedure-test.c
 
 #TESTS_ENVIRONMENT = $(GUILE) -L $(top_builddir)/src -L $(top_srcdir)/support/scheme -x $(libdir)
 #TESTS_ENVIRONMENT = LOG_COMPILER
-TESTS = ctrnn-test.scm fode-test.scm vision-test.scm ctrnn-ctest vision-ctest c-vision-test
+TESTS = ctrnn-test.scm fode-test.scm vision-test.scm ctrnn-ctest vision-ctest c-vision-test unified-procedure-ctest unified-procedure-test.scm
 TEST_EXTENSIONS = .scm 
 SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
 
@@ -78,6 +88,14 @@ SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
 # #ctrnn.scm ctrnn.h
 # ctrnn_c_SOURCES = ctrnn.nw ctrnn-appendix.nw
 
+check-log: 
+	$(MAKE) check || cat test-suite.log
+
+recheck-log: 
+	$(MAKE) recheck || cat test-suite.log
+
+#	@if test "$(V)" == "1" && test -z "$(TEST_LOGS)"; then echo "FAILED TEST LOGS"; files=`grep -l 'fail$$' $(TEST_LOGS)`; test -z "$$files" && cat $$files;	fi
+
 include $(top_srcdir)/support/automake/noweb.am
 include $(top_srcdir)/support/automake/guile.am
 #include $(top_srcdir)/support/automake/noweb2.am
@@ -85,6 +103,8 @@ include $(top_srcdir)/support/automake/guile.am
 ctrnn.c.x : ctrnn.c
 vision.c.x : vision.c
 fode.c.x : fode.c
+
+unified-procedure.c.x : unified-procedure.c
 
 ctrnn.c : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
 ctrnn-test.scm : ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)

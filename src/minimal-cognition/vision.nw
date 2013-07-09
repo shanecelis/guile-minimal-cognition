@@ -15,11 +15,15 @@ modules and defines some procedures.\footnote{Style note: I use the
   #:use-module (infix)
   #:use-module (ice-9 optargs)
   #:use-module (minimal-cognition fode)
-  #:use-module (minimal-cognition ctrnn))
+  #:use-module (minimal-cognition ctrnn)
+  #:use-module (minimal-cognition unified-procedure)
+  #:use-module (system foreign)
+  #:use-module (rnrs bytevectors)
+  )
 
 ;; This is erroneously reported as a "file not found" error when
 ;; there is a symbol missing. Ugh.
-#;(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-vision" "init_vision")
+(load-extension "libguile-vision" "init_vision")
 
 
 <<Procedure>>
@@ -289,7 +293,9 @@ Great, now let's basically do the same tests but with this new form.
 (when (and (get-environment-variable "USE_C_VISION_INPUT") 
            (string=? "1" (get-environment-variable "USE_C_VISION_INPUT")))
  (format #t "Using c-vision-input.~%")
- (set! make-vision-input make-c-vision-input))
+ #;(set! make-vision-input make-c-vision-input)
+ (set! make-vision-input make-c-vision-input-unified)
+)
 
 (define vision-input (make-vision-input ty m n d r D Theta D))
 (check (vision-input t 0) (=> fe:=?) 2)
@@ -351,6 +357,7 @@ rewrite it in C.
 <<file:vision.h>>=
 #ifndef _VISION_H_
 #define _VISION_H_
+#include <libguile.h>
 #include "ctrnn.h"
 
 <<ctrnn:Include GSL headers.>>
@@ -388,6 +395,7 @@ the speed.  We need a structure to hold all the arguments.
 <<Structure>>=
 struct vision_args {
   const double *ty; // time and state variables
+  scm_t_array_handle *ty_handle;  // an array handle
   int m; // number of objects
   int n; // number of sensors
   double d; //agent diameter
@@ -404,6 +412,7 @@ struct vision_args {
 <<Function>>=
 void setup_vision_args(struct vision_args *args) 
 {
+  args->ty_handle = malloc(sizeof(scm_t_array_handle));
   double theta_1 =  M_PI_2 + args->Theta / 2.;
   double delta_theta = -args->Theta / (args->n - 1);
   if (args->R == NULL) {
@@ -427,8 +436,28 @@ void teardown_vision_args(struct vision_args *args)
     free(args->R);
     args->R = NULL;
   }
+  if (args->ty_handle) {
+    scm_array_handle_release(args->ty_handle);
+    free(args->ty_handle);
+    args->ty_handle = NULL;
+  }
 }
 @ 
+
+<<Function>>=
+void teardown_ctrnn_params(struct ctrnn_params *params) 
+{
+  if (params) {
+    if (params->user) {
+      teardown_vision_args(params->user);
+      free(params->user);
+      params->user = NULL;
+    }
+    free(params);
+  }
+}
+@ 
+
 
 This rotation matrix will rotate a 2D vector by a positive $\theta_i$
 clockwise, and a negative $\theta_i$ counter-clockwise.  (I believe
@@ -456,6 +485,12 @@ Oops.)
 <<Function>>=
 int vision_input (double t, int i, struct ctrnn_params *params, double *output)
 {
+  if (! params)
+    return 3;
+  if (! output)
+    return 4;
+  if (! params->user)
+    return 5;
   struct vision_args* args = (struct vision_args *) params->user;
   if (i >= args->n) {
     // Only the first n nodes are sensors.
@@ -629,6 +664,15 @@ if (err != GSL_SUCCESS) return GSL_EBADFUNC;
 /* if (err != GSL_SUCCESS) return GSL_EBADFUNC; */
 @
 
+<<Procedure>>=
+(define (sight-listener->pointer proc)
+  (let ((wrapped (lambda (x1 y1 x2 y2 vargs)
+                   (let ((p1 (vector x1 y1))
+                         (p2 (vector x2 y2)))
+                     (proc p1 p2)))))
+    (procedure->pointer void wrapped (list double double double double '*))))
+@ 
+
 <<Function>>=
 void call_scm_sight_listener_func(double x1, double y1, double x2, double y2, struct vision_args* vargs)
 {
@@ -667,6 +711,7 @@ int main(int argc, char **argv)
     struct vision_args vargs;
     double ty[] = {0., 1., 2., 3., 4.};
     vargs.ty = ty;
+    vargs.ty_handle = NULL;
     vargs.m = 2;
     vargs.n = 9;
     vargs.d = 0.,
@@ -716,6 +761,7 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
   struct vision_args vargs;
   SCM t = scm_car(tAndI);
   SCM i = scm_cdr(tAndI);
+  
   GET_DOUBLE_HANDLE(ty, ty_array);
   vargs.ty = ty_array;
   vargs.m = scm_to_int(m);
@@ -727,8 +773,8 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
   vargs.max_output = scm_to_double(max_output);
   vargs.R = NULL;
   if (SCM_UNBNDP(sight_listener)) {
-      vargs.sight_listener = NULL;
-      vargs.user = NULL;
+    vargs.sight_listener = NULL;
+    vargs.user = NULL;
   } else if (scm_is_true(scm_procedure_p(sight_listener))) {
     vargs.sight_listener = call_scm_sight_listener_func;
     vargs.user = sight_listener;
@@ -749,12 +795,80 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
   else
     return scm_from_double(output);
 }
+
+<<Setup Scheme function pointer.>>
+@ 
+
+One thing we want to do is allow Scheme to use access the C function easily.  
+
+<<Setup Scheme function pointer.>>=
+SCM_GLOBAL_VARIABLE_INIT (scm_vision_input_ptr, "vision-input-ptr", scm_from_pointer(vision_input, NULL));
+@
+
+Now we need to a procedure that will create a [[void * context]] for
+the C function.
+
+<<Function>>=
+SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
+            (/* parameters */
+             SCM ty, SCM m, SCM n, SCM d, SCM r, 
+             SCM D,  SCM Theta, SCM max_output, SCM sight_listener),
+            "Returns a context pointer.")
+{
+  struct ctrnn_params* params = malloc (sizeof (struct ctrnn_params));;
+  struct vision_args* vargs = malloc (sizeof (struct vision_args));
+  vargs->m = scm_to_int(m);
+  vargs->n = scm_to_int(n);
+  vargs->d = scm_to_double(d);
+  vargs->r = scm_to_double(r);
+  vargs->D = scm_to_double(D);
+  vargs->Theta = scm_to_double(Theta);
+  vargs->max_output = scm_to_double(max_output);
+  vargs->R = NULL;
+  if (SCM_UNBNDP(sight_listener)) {
+    vargs->sight_listener = NULL;
+    vargs->user = NULL;
+  } else if (scm_is_true(scm_procedure_p(sight_listener))) {
+    vargs->sight_listener = call_scm_sight_listener_func;
+    vargs->user = sight_listener;
+  } else {
+    // Expect nothing or a procedure.
+    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+  }
+  setup_vision_args(vargs); 
+  scm_array_get_handle(ty, vargs->ty_handle);
+  double* ty_array = scm_array_handle_f64_writable_elements(vargs->ty_handle);  
+  vargs->ty = ty_array;
+
+  //return scm_from_pointer(&vargs, ( void (*)(void*) )teardown_vision_args);
+  params->user = vargs;
+  params->n = vargs->n + 1;
+  return scm_from_pointer(params, ( void (*)(void*) )teardown_ctrnn_params);
+}
 @ 
 
 <<Procedure>>=
 (define (make-c-vision-input ty . args)
   (lambda (t i)
    (apply (@@ (minimal-cognition ctrnn) c-vision-input) (cons t i) (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args)))
+@ 
+
+<<Procedure>>=
+(define (make-c-vision-input-unified ty . args)
+  (let ((proc (make-unified-procedure int vision-input-ptr
+                                    (list double int '* '*)))
+        (context (apply make-c-vision-context (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args)))
+    (lambda (t i)
+      (let ((bv (make-bytevector (sizeof double)))  ;; need to return a float.
+            (err 0))
+        
+        (set! err 
+              #;(proc t i %null-pointer %null-pointer)
+              (proc t i context (bytevector->pointer bv))
+              )
+        (if (not (= err 0))
+            (throw 'vision-input-error err))
+        (bytevector-ieee-double-ref bv 0 (native-endianness))))))
 @ 
 
 
@@ -766,7 +880,9 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
 (use-modules (minimal-cognition vision)
              ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
              (emacsy util)
-             (srfi srfi-98))
+             (srfi srfi-98)
+             (minimal-cognition unified-procedure)
+             )
 (eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.
            (module-use! (current-module) (resolve-module '(minimal-cognition vision))))

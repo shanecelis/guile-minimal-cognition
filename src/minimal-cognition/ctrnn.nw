@@ -140,11 +140,13 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 #define C_STRING_TO_SYMBOL(str) scm_string_to_symbol(scm_from_locale_string(str))
 @ 
 
+
 <<Primitive>>=
-SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
+SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
-             SCM time_constant, SCM bias, SCM gain, SCM input_func),
-            "Move a CTRNN forward a single time step.")
+             SCM time_constant, SCM bias, SCM gain, SCM input_func, 
+             SCM context),
+            "Move a CTRNN forward a single time step.  The input-func has two parameters: a time, double; and a sensor number, an integer.")
 {
   GET_DOUBLE_HANDLE(ty, ty_array);
   GET_READ_DOUBLE_HANDLE(weights, w_array);
@@ -161,22 +163,43 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   params.gain = g_array;
   scm_t_array_handle ty2_handle; 
   int scm_err = 0;
+  SCM input_pointer = SCM_UNSPECIFIED;
+  SCM input_context = SCM_UNSPECIFIED;
   if (scm_is_false(input_func)) {
     params.input = NULL;
     params.user = NULL;
+  } else if (scm_is_true(scm_unified_procedure_p (input_func))) {
+    input_pointer = scm_unified_c_function_pointer(input_func);
+    params.input = scm_to_pointer(input_pointer);
   } else if (scm_is_true(scm_procedure_p (input_func))) {
     params.input = call_scm_input_func;
     params.user = input_func;
   } else if (scm_is_true(scm_list_p (input_func))) {
     SCM list = input_func;
     
-    if (scm_is_false(scm_eq_p(scm_car(list), 
-                              C_STRING_TO_SYMBOL("c-vision-input")))) {
-      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), SCM_EOL);
+    if (scm_is_false(scm_pointer_p(scm_car(list)))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
+                scm_list_1(C_STRING_TO_SYMBOL("no-c-function-pointer")));
     }
-    list = scm_cdr(list); // Skip element 0.
-
-    params.input = vision_input; // C vision implementation.
+    // C input implementation.
+    input_pointer = scm_car(list);
+    params.input = scm_to_pointer(input_pointer);
+    list = scm_cdr(list); 
+    
+    if (scm_is_false(scm_pointer_p(scm_car(list)))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
+                scm_list_1(C_STRING_TO_SYMBOL("no-context")));
+    }
+    input_context = scm_car(list);
+    void *context = scm_to_pointer(input_context);
+    params.input = context;
+    list = scm_cdr(list); 
+    if (scm_is_false(scm_null_p(list))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
+                scm_list_1(C_STRING_TO_SYMBOL("two-expected")));
+    }
+    
+#if 0
     struct vision_args vargs;
     SCM ty2 = scm_car(list);
     // Can't use the macro because of scope issues.
@@ -200,25 +223,31 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
     vargs.max_output = scm_to_double(scm_car(list));
     list = scm_cdr(list); 
     vargs.R = NULL;
-    if (scm_is_true(scm_null_p(list))) {
+    if (scm_is_true(scm_null_p(list)) || scm_is_false(scm_car(list))) {
       vargs.sight_listener = NULL;
       vargs.user = NULL;
     } else if (scm_is_true(scm_procedure_p(scm_car(list)))) {
-      vargs.sight_listener = call_scm_sight_listener_func;
-      vargs.user = scm_car(list);
+      SCM proc = scm_car(list);
       list = scm_cdr(list); 
+      SCM wrapper = scm_c_private_variable("minimal-cognition vision", "sight-listener->pointer");
+      SCM pointer = scm_call_1(wrapper, proc);
+      vargs.sight_listener = scm_to_pointer(pointer);
     } else {
       scm_err = 1;
       goto invalid_sight_listener_arg;
     }
     setup_vision_args(&vargs);
     params.user = &vargs;
+#endif
+    params.user = context;
     cleanup_vision = 1;
   } else {
     scm_err = 2;
     goto invalid_input_func;
   }
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
+
+  scm_remember_upto_here_2 (input_pointer, input_context);
 
 invalid_sight_listener_arg:
   if (cleanup_vision) {
@@ -273,8 +302,6 @@ void init_ctrnn(void)
 #ifndef SCM_MAGIC_SNARFER 
 #include "ctrnn.c.x" 
 #endif
-  // FIXME This ends up placing the vision symbols into the ctrnn module.  
-  init_vision();
 }
 @
 <<file:ctrnn.scm>>=
@@ -282,11 +309,12 @@ void init_ctrnn(void)
  #:use-module (ice-9 optargs)
  #:use-module (oop goops)
  #:use-module ((vector-math) #:select (vector-move!*))
- #:use-module (emacsy util))
+ #:use-module (emacsy util)
+ #:use-module (minimal-cognition unified-procedure))
 
 ;; This is erroneously reported as a "file not found" error when
 ;; there is a symbol missing. Ugh.
-(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-ctrnn" "init_ctrnn")
+(load-extension "libguile-ctrnn" "init_ctrnn")
 
 <<Class>>
 
@@ -303,7 +331,9 @@ void init_ctrnn(void)
   (time-constant ctrnn)
   (bias ctrnn)
   (gain ctrnn)
-  (input-func ctrnn)))
+  (input-func ctrnn)
+  #f
+  ))
 @ 
 
 <<Class>>=
@@ -313,7 +343,8 @@ void init_ctrnn(void)
  (time-constant #:getter time-constant #:init-keyword #:time-constant)
  (bias #:getter bias #:init-keyword #:bias)
  (gain #:getter gain #:init-keyword #:gain)
- (input-func #:accessor input-func #:init-keyword #:input-func))
+ (input-func #:accessor input-func #:init-keyword #:input-func)
+ #;(context #:accessor context #:init-keyword #:context))
 
  (export <ctrnn> input-func weights time-constant bias gain n)
 @ 
