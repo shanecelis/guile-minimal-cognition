@@ -367,7 +367,7 @@ rewrite it in C.
 void setup_vision_args(struct vision_args *args);
 void teardown_vision_args(struct vision_args *args);
 
-int vision_input (double t, int i, struct ctrnn_params *params, double *output);
+int vision_input (double t, int i, void *context, double *output);
 void call_scm_sight_listener_func(double x1, double y1, double x2, double y2, struct vision_args* vargs);
 void init_vision(void);
 #endif /* _VISION_H_ */
@@ -483,12 +483,14 @@ Oops.)
 @ 
 
 <<Function>>=
-int vision_input (double t, int i, struct ctrnn_params *params, double *output)
+int vision_input (double t, int i, void *context, double *output)
 {
-  if (! params)
+  if (! context)
     return 3;
   if (! output)
     return 4;
+
+  struct ctrnn_params *params = (struct ctrnn_params *) context;
   if (! params->user)
     return 5;
   struct vision_args* args = (struct vision_args *) params->user;
@@ -870,9 +872,6 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
             (throw 'vision-input-error err))
         (bytevector-ieee-double-ref bv 0 (native-endianness))))))
 @ 
-
-
-
 
 \subsection{Test}
 <<file:vision-test.scm>>=

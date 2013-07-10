@@ -24,10 +24,10 @@ typedef double (*functor)(double f, int i, void* params);
 
 void gsl_vector_map(functor f, gsl_vector *x, void *params);
 double sigmoid(double x, int i, void * params);
-double fill_input(double t, int i, void *params);
+double fill_input(double t, int i, void *cparams);
 double invert(double x, int i, void * params);
 double hadamard(double x, int i, void * params);
-int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output);
+int call_scm_input_func(double t, int i, void *context, double *output);
 
 <<Function>>
 
@@ -153,7 +153,7 @@ double fill_input(double t, int i, void *params)
   double output;
   int err;
   if (cparams->input) {
-     err = cparams->input(t, i, params, &output);
+     err = cparams->input(t, i, (void *)cparams, &output);
      if (err) {
        fprintf(stderr, "error: fill_input had an error %d\n", err);
      }

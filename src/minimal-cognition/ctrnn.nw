@@ -47,17 +47,19 @@ for its linear algebra needs.
 #include <stdlib.h>
 
 <<Macro>>
+
+typedef int (*ctrnn_input)(double t, int i, void *context, double *output);
+
 typedef struct ctrnn_params {
   int  n; /* number of nodes */
   const double *weights; /* n x n real numbers */
   const double *time_constant; /* n real numbers */
   const double *bias; /* n real numbers */
   const double *gain; /* n real numbers */
-  int (*input)(double t, int i, struct ctrnn_params *params, double *output);
+  ctrnn_input input;
   void   *user;
 } ctrnn_params;
 
-typedef int (*ctrnn_input)(double t, int i, struct ctrnn_params *params, double *output);
 
 //int dot_y(double t, const double *y, double *dydt, void *params);
 int dot_y1(double t, const double *y, double *dydt, void *params);
@@ -145,7 +147,7 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
              SCM time_constant, SCM bias, SCM gain, SCM input_func, 
-             SCM context),
+             SCM input_context),
             "Move a CTRNN forward a single time step.  The input-func has two parameters: a time, double; and a sensor number, an integer.")
 {
   GET_DOUBLE_HANDLE(ty, ty_array);
@@ -161,100 +163,43 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
   params.time_constant = tc_array;
   params.bias = b_array;
   params.gain = g_array;
-  scm_t_array_handle ty2_handle; 
   int scm_err = 0;
+  SCM scm_err_key = SCM_BOOL_F;
+  SCM scm_err_list = SCM_EOL;
   SCM input_pointer = SCM_UNSPECIFIED;
-  SCM input_context = SCM_UNSPECIFIED;
+  SCM scm_input_context = SCM_UNSPECIFIED;
+  params.user = NULL;
   if (scm_is_false(input_func)) {
     params.input = NULL;
-    params.user = NULL;
   } else if (scm_is_true(scm_unified_procedure_p (input_func))) {
     input_pointer = scm_unified_c_function_pointer(input_func);
     params.input = scm_to_pointer(input_pointer);
   } else if (scm_is_true(scm_procedure_p (input_func))) {
     params.input = call_scm_input_func;
     params.user = input_func;
-  } else if (scm_is_true(scm_list_p (input_func))) {
-    SCM list = input_func;
-    
-    if (scm_is_false(scm_pointer_p(scm_car(list)))) {
-      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
-                scm_list_1(C_STRING_TO_SYMBOL("no-c-function-pointer")));
-    }
-    // C input implementation.
-    input_pointer = scm_car(list);
-    params.input = scm_to_pointer(input_pointer);
-    list = scm_cdr(list); 
-    
-    if (scm_is_false(scm_pointer_p(scm_car(list)))) {
-      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
-                scm_list_1(C_STRING_TO_SYMBOL("no-context")));
-    }
-    input_context = scm_car(list);
-    void *context = scm_to_pointer(input_context);
-    params.input = context;
-    list = scm_cdr(list); 
-    if (scm_is_false(scm_null_p(list))) {
-      scm_throw(C_STRING_TO_SYMBOL("invalid-list-input-func"), 
-                scm_list_1(C_STRING_TO_SYMBOL("two-expected")));
-    }
-    
-#if 0
-    struct vision_args vargs;
-    SCM ty2 = scm_car(list);
-    // Can't use the macro because of scope issues.
-    //GET_DOUBLE_HANDLE(ty2, ty2_array);
-    scm_array_get_handle(ty2, &ty2_handle); 
-    const double* ty2_array = scm_array_handle_f64_elements(&ty2_handle);
-    vargs.ty = ty2_array;
-    list = scm_cdr(list); 
-    vargs.m = scm_to_int(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.n = scm_to_int(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.d = scm_to_double(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.r = scm_to_double(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.D = scm_to_double(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.Theta = scm_to_double(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.max_output = scm_to_double(scm_car(list));
-    list = scm_cdr(list); 
-    vargs.R = NULL;
-    if (scm_is_true(scm_null_p(list)) || scm_is_false(scm_car(list))) {
-      vargs.sight_listener = NULL;
-      vargs.user = NULL;
-    } else if (scm_is_true(scm_procedure_p(scm_car(list)))) {
-      SCM proc = scm_car(list);
-      list = scm_cdr(list); 
-      SCM wrapper = scm_c_private_variable("minimal-cognition vision", "sight-listener->pointer");
-      SCM pointer = scm_call_1(wrapper, proc);
-      vargs.sight_listener = scm_to_pointer(pointer);
-    } else {
-      scm_err = 1;
-      goto invalid_sight_listener_arg;
-    }
-    setup_vision_args(&vargs);
-    params.user = &vargs;
-#endif
-    params.user = context;
-    cleanup_vision = 1;
   } else {
-    scm_err = 2;
+    scm_err_key = C_STRING_TO_SYMBOL("invalid-input-func");
+    scm_err_list = scm_list_1(input_func);
     goto invalid_input_func;
+  }
+  // If we've already set the user pointer, don't set it again.
+  if (params.user == NULL && ! SCM_UNBNDP(input_context)) {
+    if (scm_is_false(input_context)) {
+      params.user = NULL;
+    } else if (scm_is_true(scm_pointer_p(input_context))) {
+      params.user = scm_to_pointer(input_context);
+    } else if (scm_is_true(scm_unified_procedure_p (input_context))) {
+      scm_input_context = scm_unified_c_function_pointer(input_context);
+      params.user = scm_to_pointer(scm_input_context);
+    } else {
+      scm_err_key = C_STRING_TO_SYMBOL("invalid-input-context");
+      scm_err_list = scm_list_1(input_context);
+      goto invalid_input_func;
+    }
   }
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
 
-  scm_remember_upto_here_2 (input_pointer, input_context);
-
-invalid_sight_listener_arg:
-  if (cleanup_vision) {
-    struct vision_args *vargs = (struct vision_args *)params.user;
-    teardown_vision_args(vargs);
-    scm_array_handle_release(&ty2_handle);
-  }
+  scm_remember_upto_here_2 (input_pointer, scm_input_context);
 
 invalid_input_func:
   RELEASE_HANDLE(ty);
@@ -262,12 +207,9 @@ invalid_input_func:
   RELEASE_HANDLE(time_constant);
   RELEASE_HANDLE(bias);
   RELEASE_HANDLE(gain);
-  if (scm_err == 1) 
-    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
-  else if (scm_err == 2)
-    scm_throw(C_STRING_TO_SYMBOL("invalid-input-func"), SCM_EOL);
+  if (scm_is_true(scm_err_key))
+    scm_throw(scm_err_key, scm_err_list);
   
-  //printf ("err %d %s\n", err, gsl_strerror (err));
   return err == 0 ? SCM_BOOL_T : SCM_BOOL_F;
 }
 @ 
@@ -288,8 +230,9 @@ invalid_input_func:
 @ 
 
 <<Function>>=
-int call_scm_input_func(double t, int i, struct ctrnn_params *params, double *output)
+int call_scm_input_func(double t, int i, void *context, double *output)
 {
+  struct ctrnn_params *params = (struct ctrnn_params *)context;
   SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
   *output = scm_to_double(res);
   return 0;

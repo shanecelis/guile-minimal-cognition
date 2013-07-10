@@ -68,3 +68,5 @@ else
 clean-latexmk:
 endif
 
+preview-local: $(NOWEB_DOCS)
+	open -a Skim.app $^ || open -a Preview.app $^
