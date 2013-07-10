@@ -16,11 +16,15 @@ will write it mainly in terms of C primitives.
 <<file:unified-procedure.scm>>=
 ;; XXX this should not be in the minimal-cognition module.
 (define-module (minimal-cognition unified-procedure)
+  #:use-module (srfi srfi-1)
+  #:use-module (system foreign)
   #:export (make-unified-procedure
             unified-procedure?
-            unified-c-function-pointer))
+            unified-c-function-pointer
+            unified-default-values))
 
 (load-extension "libguile-unified-procedure" "init_unified_procedure")
+<<procedure>>
 @ 
 
 <<file:unified-procedure.c>>=
@@ -39,7 +43,6 @@ will write it mainly in terms of C primitives.
 #define C_STRING_TO_SYMBOL(str) scm_string_to_symbol(scm_from_locale_string(str))
 @ 
 
-
 <<file:unified-procedure.h>>=
 #include <libguile.h>
 
@@ -48,9 +51,85 @@ SCM scm_unified_procedure_p(SCM proc);
 SCM scm_unified_c_function_pointer(SCM proc);
 @ 
 
+Guile is particularly nice in that you can create a function pointer
+to a closure.  This means you don't have to thread a bunch of context
+through using [[void *]] pointers in your C code, which is really
+wonderful.  However, if this unified procedure is to live up to its
+name, it ought to work just as well if it is implemented in C or
+Scheme, and in C we still have to deal with the [[void *]] plumbing.
+So how best to do this? We're piggy-backing off
+[[pointer->procedure]] so let's try to stick with that.  
+
+<<example>>=
+  (make-unified-procedure
+   int
+   c-function-pointer
+   (list int double '*))
+@ 
+
+The last argument is the [[void *]] plumbing necessary in C.
+
+<<example>>=
+(define f (make-unified-procedure
+  int
+  c-function-pointer
+  (list int double `(* ,(make-c-context-pointer)))))
+@ 
+
+This will create a function that looks kind of like this: (define (f a
+b #:optional (c (make-c-context-pointer))) ... ).
+
+<<procedure>>=
+
+  (define (type? x)
+    (not (pair? x)))
+  (define (type-and-default? x)
+    (pair? x))
+  (define (just-type x)
+    (if (type? x)
+        x
+        (car x)))
+  (define* (just-default-value x #:optional (none-token #f))
+    (if (type-and-default? x)
+        (cadr x)
+        none-token))
+
+(define* (arg-types->default-values arg-types #:optional (none-token #f))
+  (list->vector (map (lambda (x) (just-default-value x none-token)) arg-types)))
+@ 
+
+<<procedure>>=
+(define 
+  (make-scheme-procedure-for-c-pointer return-type c-function-pointer arg-types-and-defaults)
+
+  ;; Check the arguments.  Must be a list of types followed by
+  ;; type-and-defaults.
+  (let* ((drop-types (drop-while type? arg-types-and-defaults))
+         (drop-all (drop-while type-and-default? drop-types)))
+    (if (not (null? drop-all))
+        (throw 'invalid-arg-types-and-defaults arg-types-and-defaults)))
+
+  (let* ((arg-types (map just-type arg-types-and-defaults))
+         (default-values (map just-default-value arg-types-and-defaults))
+         (basic-scheme-procedure (pointer->procedure return-type c-function-pointer arg-types))
+         (req-count (length (take-while type? arg-types-and-defaults)))
+         (opt-count (- (length arg-types-and-defaults) req-count))
+         (all-count (+ req-count opt-count))
+         )
+      (lambda args
+        ;; Check argument count.
+        (if (or (< (length args) req-count)
+                (> (length args) all-count))
+            (scm-error 'invalid-argument-count "unified-c->scheme-procedure" "Expected ~A to ~A arguments; instead got ~A arguments: ~A" (list req-count all-count (length args) args) #f))
+        (format #t "args ~a default-values ~a~%" args default-values)
+        (apply basic-scheme-procedure (append args (drop default-values
+                                                         (length args)))))))
+@ 
+
+
 <<primitive>>=
 SCM_DEFINE (scm_make_unified_procedure, "make-unified-procedure", 
-            3, 0, 0,
+            3, 1, 0,
             (SCM return_type, SCM proc, SCM arg_types),
             "Make a unified-procedure from a Scheme procedure or a C function pointer.")
 {
@@ -63,13 +142,19 @@ SCM_DEFINE (scm_make_unified_procedure, "make-unified-procedure",
   } else if (scm_is_true(scm_pointer_p(proc))) {
     // We have a C function pointer; let's create a scheme procedure.
     c_function_pointer = proc;
-    scheme_procedure = scm_pointer_to_procedure(return_type, c_function_pointer, arg_types);
+    SCM my_pointer_to_procedure = scm_c_private_ref("minimal-cognition unified-procedure", "make-scheme-procedure-for-c-pointer");
+    //scheme_procedure = scm_pointer_to_procedure(return_type, c_function_pointer, arg_types);
+    scheme_procedure = scm_call_3(my_pointer_to_procedure, return_type, c_function_pointer, arg_types);
   } else {
     scm_throw(C_STRING_TO_SYMBOL("expected-procedure-or-pointer"), 
               scm_list_1(proc));
   }
 
   scm_set_procedure_property_x(scheme_procedure, C_STRING_TO_SYMBOL("unified-c-function-pointer"), c_function_pointer);
+
+  SCM arg_types_to_default_values = scm_c_private_ref("minimal-cognition unified-procedure", "arg-types->default-values");
+  SCM default_values = scm_call_1(arg_types_to_default_values, arg_types);
+  scm_set_procedure_property_x(scheme_procedure, C_STRING_TO_SYMBOL("unified-default-values"), default_values);
   return scheme_procedure;
 }
 @ 
@@ -86,6 +171,7 @@ SCM_DEFINE (scm_unified_procedure_p, "unified-procedure?",
   return scm_is_false(pointer) ? SCM_BOOL_F : SCM_BOOL_T;
 }
 @ 
+
 <<primitive>>=
 SCM_DEFINE (scm_unified_c_function_pointer, "unified-c-function-pointer", 
             1, 0, 0,
@@ -100,6 +186,20 @@ SCM_DEFINE (scm_unified_c_function_pointer, "unified-c-function-pointer",
   return pointer;
 }
 @ 
+
+<<primitive>>=
+SCM_DEFINE (scm_unified_default_values, "unified-default-values", 
+            1, 0, 0,
+            (SCM proc),
+            "Return the list of default values for this unified-procedure.")
+{
+  if (scm_is_false(scm_unified_procedure_p(proc))) {
+      scm_throw(C_STRING_TO_SYMBOL("invalid-unified-procedure"), 
+                scm_list_1(proc));
+  }
+  return scm_procedure_property(proc, C_STRING_TO_SYMBOL("unified-default-values"));
+}
+@
 
 <<primitive>>=
 int c_incr(int x) {
@@ -158,15 +258,18 @@ int main(int argc, char **argv)
 (use-modules (srfi srfi-64)
              (minimal-cognition unified-procedure)
              (system foreign)
-             (rnrs bytevectors)
-             )
+             (rnrs bytevectors))
+
+#;(eval-when (compile load eval)
+           ;; Some trickery so we can test private procedures.
+           (module-use! (current-module) (resolve-module '(minimal-cognition unified-procedure))))
 
 (define (incr x)
   (+ x 1))
-(define unified-call-1 (@@ (minimal-cognition unified-procedure) unified-call-1))
 (test-begin "Scheme Procedure")
 (test-assert (not (unified-procedure? incr)))
 
+(define unified-call-1 (@@ (minimal-cognition unified-procedure) unified-call-1))
 (define incr-up (make-unified-procedure int incr (list int)))
 (test-assert (unified-procedure? incr))
 (test-equal (incr 1) 2)
@@ -208,5 +311,24 @@ int main(int argc, char **argv)
 (test-equal (*x) 3)
 (test-end)
 
+(test-begin "Unified Procedure with Default Arguments")
+(define make-scheme-procedure-for-c-pointer 
+  (@@ (minimal-cognition unified-procedure) make-scheme-procedure-for-c-pointer))
+(define c-incr-d0 (make-scheme-procedure-for-c-pointer int c-incr-pointer (list int)))
+(test-error (c-incr-d0))
+(test-equal 1 (c-incr-d0 0))
+(test-error (c-incr-d0 0 1))
+
+(define c-incr-d1 (make-scheme-procedure-for-c-pointer int c-incr-pointer (list (list int 1))))
+(test-equal 2 (c-incr-d1))
+(test-equal 1 (c-incr-d1 0))
+(test-error (c-incr-d1 0 1))
+
+(define c-incr-ud0 (make-unified-procedure int c-incr-pointer (list int)))
+(test-equal (vector #f) (unified-default-values c-incr-ud0))
+
+(define c-incr-ud1 (make-unified-procedure int c-incr-pointer (list (list int 1))))
+(test-equal (vector 1) (unified-default-values c-incr-ud1))
+(test-end)
 (exit (= (test-runner-fail-count (test-runner-current)) 0))
 @

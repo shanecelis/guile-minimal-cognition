@@ -19,6 +19,9 @@ modules and defines some procedures.\footnote{Style note: I use the
   #:use-module (minimal-cognition unified-procedure)
   #:use-module (system foreign)
   #:use-module (rnrs bytevectors)
+  #:export (vision-input-pointer
+            make-c-vision-context
+            )
   )
 
 ;; This is erroneously reported as a "file not found" error when
@@ -805,7 +808,7 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
 One thing we want to do is allow Scheme to use access the C function easily.  
 
 <<Setup Scheme function pointer.>>=
-SCM_GLOBAL_VARIABLE_INIT (scm_vision_input_ptr, "vision-input-ptr", scm_from_pointer(vision_input, NULL));
+SCM_GLOBAL_VARIABLE_INIT (scm_vision_input_pointer, "vision-input-pointer", scm_from_pointer(vision_input, NULL));
 @
 
 Now we need to a procedure that will create a [[void * context]] for
@@ -869,7 +872,7 @@ SCM_DEFINE (scm_wrap_dummy_ctrnn_params, "wrap-dummy-ctrnn-params", 1, 0, 0,
 
 <<Procedure>>=
 (define (make-c-vision-input-unified ty . args)
-  (let* ((proc (make-unified-procedure int vision-input-ptr
+  (let* ((proc (make-unified-procedure int vision-input-pointer
                                     (list double int '* '*)))
          (context (apply make-c-vision-context (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args))
          (wrapped-context (wrap-dummy-ctrnn-params context))

@@ -174,6 +174,8 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
   } else if (scm_is_true(scm_unified_procedure_p (input_func))) {
     input_pointer = scm_unified_c_function_pointer(input_func);
     params.input = scm_to_pointer(input_pointer);
+    SCM default_values = scm_unified_default_values(input_func);
+    params.user = scm_c_vector_ref(default_values, 2);
   } else if (scm_is_true(scm_procedure_p (input_func))) {
     params.input = call_scm_input_func;
     params.user = input_func;
@@ -287,7 +289,7 @@ void init_ctrnn(void)
  (bias #:getter bias #:init-keyword #:bias)
  (gain #:getter gain #:init-keyword #:gain)
  (input-func #:accessor input-func #:init-keyword #:input-func)
- #;(context #:accessor context #:init-keyword #:context))
+ (input-context #:accessor input-context #:init-keyword #:input-context))
 
  (export <ctrnn> input-func weights time-constant bias gain n)
 @ 
