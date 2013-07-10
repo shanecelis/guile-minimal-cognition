@@ -143,7 +143,7 @@ gsl_blas_daxpy(1.0, &Y.vector, R);
 
 <<Compute $R \set G \circ R$.>>=
 gsl_vector_const_view G = gsl_vector_const_view_array(cparams->gain, cparams->n);
-gsl_vector_map(hadamard, R, (const void *) &G.vector);
+gsl_vector_map(hadamard, R, (void *) &G.vector);
 @
 
 <<Function>>=

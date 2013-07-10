@@ -144,10 +144,9 @@ int step_ctrnn(double *ty, double h, ctrnn_params *params)
 
 
 <<Primitive>>=
-SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
+SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
             (SCM ty, SCM h, SCM n, SCM weights, 
-             SCM time_constant, SCM bias, SCM gain, SCM input_func, 
-             SCM input_context),
+             SCM time_constant, SCM bias, SCM gain, SCM input_func),
             "Move a CTRNN forward a single time step.  The input-func has two parameters: a time, double; and a sensor number, an integer.")
 {
   GET_DOUBLE_HANDLE(ty, ty_array);
@@ -166,16 +165,19 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
   int scm_err = 0;
   SCM scm_err_key = SCM_BOOL_F;
   SCM scm_err_list = SCM_EOL;
-  SCM input_pointer = SCM_UNSPECIFIED;
-  SCM scm_input_context = SCM_UNSPECIFIED;
+  SCM scm_input_pointer = SCM_UNSPECIFIED;
   params.user = NULL;
   if (scm_is_false(input_func)) {
     params.input = NULL;
   } else if (scm_is_true(scm_unified_procedure_p (input_func))) {
-    input_pointer = scm_unified_c_function_pointer(input_func);
-    params.input = scm_to_pointer(input_pointer);
+    scm_input_pointer = scm_unified_c_function_pointer(input_func);
+    params.input = scm_to_pointer(scm_input_pointer);
     SCM default_values = scm_unified_default_values(input_func);
-    params.user = scm_c_vector_ref(default_values, 2);
+    if (scm_is_true(scm_vector_p(default_values))) {
+      SCM entry = scm_c_vector_ref(default_values, 2);
+      if (scm_is_true(scm_pointer_p(entry)))
+        params.user = scm_to_pointer(entry);
+    }
   } else if (scm_is_true(scm_procedure_p (input_func))) {
     params.input = call_scm_input_func;
     params.user = input_func;
@@ -184,24 +186,10 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 1, 0,
     scm_err_list = scm_list_1(input_func);
     goto invalid_input_func;
   }
-  // If we've already set the user pointer, don't set it again.
-  if (params.user == NULL && ! SCM_UNBNDP(input_context)) {
-    if (scm_is_false(input_context)) {
-      params.user = NULL;
-    } else if (scm_is_true(scm_pointer_p(input_context))) {
-      params.user = scm_to_pointer(input_context);
-    } else if (scm_is_true(scm_unified_procedure_p (input_context))) {
-      scm_input_context = scm_unified_c_function_pointer(input_context);
-      params.user = scm_to_pointer(scm_input_context);
-    } else {
-      scm_err_key = C_STRING_TO_SYMBOL("invalid-input-context");
-      scm_err_list = scm_list_1(input_context);
-      goto invalid_input_func;
-    }
-  }
+
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
 
-  scm_remember_upto_here_2 (input_pointer, scm_input_context);
+  scm_remember_upto_here_1 (scm_input_pointer);
 
 invalid_input_func:
   RELEASE_HANDLE(ty);
@@ -277,7 +265,6 @@ void init_ctrnn(void)
   (bias ctrnn)
   (gain ctrnn)
   (input-func ctrnn)
-  #f
   ))
 @ 
 
@@ -288,8 +275,7 @@ void init_ctrnn(void)
  (time-constant #:getter time-constant #:init-keyword #:time-constant)
  (bias #:getter bias #:init-keyword #:bias)
  (gain #:getter gain #:init-keyword #:gain)
- (input-func #:accessor input-func #:init-keyword #:input-func)
- (input-context #:accessor input-context #:init-keyword #:input-context))
+ (input-func #:accessor input-func #:init-keyword #:input-func))
 
  (export <ctrnn> input-func weights time-constant bias gain n)
 @ 

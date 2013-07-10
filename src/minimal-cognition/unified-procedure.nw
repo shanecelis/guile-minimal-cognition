@@ -47,6 +47,7 @@ will write it mainly in terms of C primitives.
 #include <libguile.h>
 
 SCM scm_make_unified_procedure(SCM return_type, SCM proc, SCM arg_types);
+SCM scm_unified_default_values(SCM proc);
 SCM scm_unified_procedure_p(SCM proc);
 SCM scm_unified_c_function_pointer(SCM proc);
 @ 
