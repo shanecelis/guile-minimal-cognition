@@ -393,7 +393,7 @@ Well, rewriting isn\'t fun, but this is an inner loop where we do need
 the speed.  We need a structure to hold all the arguments.
 
 <<Structure>>=
-struct vision_args {
+typedef struct vision_args {
   const double *ty; // time and state variables
   scm_t_array_handle *ty_handle;  // an array handle
   int m; // number of objects
@@ -406,7 +406,7 @@ struct vision_args {
   gsl_matrix **R; // Rotation matrices for each sensor.
   void (*sight_listener)(double x1, double y1, double x2, double y2, struct vision_args* vargs);
   void *user;
-};
+} vision_args;
 @
 
 <<Function>>=
@@ -445,14 +445,15 @@ void teardown_vision_args(struct vision_args *args)
 @ 
 
 <<Function>>=
-void teardown_ctrnn_params(struct ctrnn_params *params) 
+void teardown_ctrnn_params(ctrnn_params *params) 
 {
   if (params) {
-    if (params->user) {
-      teardown_vision_args(params->user);
-      free(params->user);
-      params->user = NULL;
-    }
+    // Maybe I shouldn't be freeing this.
+    /* if (params->user) { */
+    /*   teardown_vision_args(params->user); */
+    /*   free(params->user); */
+    /*   params->user = NULL; */
+    /* } */
     free(params);
   }
 }
@@ -817,7 +818,6 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
              SCM D,  SCM Theta, SCM max_output, SCM sight_listener),
             "Returns a context pointer.")
 {
-  struct ctrnn_params* params = malloc (sizeof (struct ctrnn_params));;
   struct vision_args* vargs = malloc (sizeof (struct vision_args));
   vargs->m = scm_to_int(m);
   vargs->n = scm_to_int(n);
@@ -839,15 +839,27 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
   }
   setup_vision_args(vargs); 
   scm_array_get_handle(ty, vargs->ty_handle);
-  double* ty_array = scm_array_handle_f64_writable_elements(vargs->ty_handle);  
-  vargs->ty = ty_array;
+  vargs->ty = scm_array_handle_f64_writable_elements(vargs->ty_handle);  
 
-  //return scm_from_pointer(&vargs, ( void (*)(void*) )teardown_vision_args);
+  return scm_from_pointer(vargs, ( void (*)(void*) )teardown_vision_args);
+}
+@ 
+
+<<Function>>=
+SCM_DEFINE (scm_wrap_dummy_ctrnn_params, "wrap-dummy-ctrnn-params", 1, 0, 0,
+            (/* parameters */
+             SCM vision_context_pointer),
+            "Wraps a vision context pointer.")
+{
+  ctrnn_params* params = malloc(sizeof (struct ctrnn_params));;
+
+  vision_args *vargs = (vision_args *) scm_to_pointer(vision_context_pointer);
   params->user = vargs;
   params->n = vargs->n + 1;
   return scm_from_pointer(params, ( void (*)(void*) )teardown_ctrnn_params);
 }
 @ 
+
 
 <<Procedure>>=
 (define (make-c-vision-input ty . args)
@@ -857,17 +869,18 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
 
 <<Procedure>>=
 (define (make-c-vision-input-unified ty . args)
-  (let ((proc (make-unified-procedure int vision-input-ptr
+  (let* ((proc (make-unified-procedure int vision-input-ptr
                                     (list double int '* '*)))
-        (context (apply make-c-vision-context (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args)))
+         (context (apply make-c-vision-context (list->typed-array 'f64 (list (vector-length ty)) (vector->list ty)) args))
+         (wrapped-context (wrap-dummy-ctrnn-params context))
+        )
     (lambda (t i)
       (let ((bv (make-bytevector (sizeof double)))  ;; need to return a float.
             (err 0))
         
         (set! err 
               #;(proc t i %null-pointer %null-pointer)
-              (proc t i context (bytevector->pointer bv))
-              )
+              (proc t i wrapped-context (bytevector->pointer bv)))
         (if (not (= err 0))
             (throw 'vision-input-error err))
         (bytevector-ieee-double-ref bv 0 (native-endianness))))))
