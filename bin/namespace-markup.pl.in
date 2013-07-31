@@ -29,7 +29,7 @@ END
     exit(2);
 }
 my $file;
-open(INPUT, "/opt/local/libexec/noweb/markup " . join(' ', @ARGV) . "|") or die("noweb/markup failed.\n");
+open(INPUT, "@markup@ " . join(' ', @ARGV) . "|") or die("Noweb's @markup@ failed.\n");
 while (<INPUT>) {
     if (/^\@file ([^\.:]+)[^:]*$/) { 
         $file = $1; 
