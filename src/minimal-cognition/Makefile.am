@@ -1,3 +1,5 @@
+include $(top_srcdir)/support/automake/noweb.am
+include $(top_srcdir)/support/automake/guile.am
 
 # Stop make from deleting intermediate files. 
 # http://darrendev.blogspot.com/2008/06/stopping-make-delete-intermediate-files.html
@@ -34,9 +36,7 @@ vision-paper.pdf: vision-paper.tex vision.tex
 
 endif
 
-clean-local : clean-latexmk
-
-MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn -n ctrnn-cat=ctrnn --"
+MARKUP_FLAGS = -markup "$(top_builddir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn -n ctrnn-cat=ctrnn --"
 #MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl --"
 WARN_NOTANGLE_FLAGS = -W 
 NOWEAVE_FLAGS = -n -delay $(MARKUP_FLAGS)
@@ -97,9 +97,6 @@ SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
 
 #	@if test "$(V)" == "1" && test -z "$(TEST_LOGS)"; then echo "FAILED TEST LOGS"; files=`grep -l 'fail$$' $(TEST_LOGS)`; test -z "$$files" && cat $$files;	fi
 
-include $(top_srcdir)/support/automake/noweb.am
-include $(top_srcdir)/support/automake/guile.am
-#include $(top_srcdir)/support/automake/noweb2.am
 
 ctrnn.c.x : ctrnn.c
 vision.c.x : vision.c

@@ -62,10 +62,15 @@ AC_CONFIG_FILES([ Makefile
                   tests/works-without-noweb.sh
                   tests/print-install.sh
                   ], [chmod +x bin/runtests])
+
 AC_CONFIG_FILES([ src/minimal-cognition/c-vision-test ],
                 [ chmod +x src/minimal-cognition/c-vision-test ])
+
 AC_CONFIG_FILES([ bin/env],
                 [ chmod +x bin/env])
+
+AC_CONFIG_FILES([ bin/namespace-markup.pl],
+                [ chmod +x bin/namespace-markup.pl])
 
 AC_CONFIG_FILES([ bin/warn-notangle],
                 [ chmod +x bin/warn-notangle])
