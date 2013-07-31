@@ -156,13 +156,11 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   GET_READ_DOUBLE_HANDLE(gain, g_array);
   int err;
   ctrnn_params params;
-  int cleanup_vision = 0;
   params.n = scm_to_int(n);
   params.weights = w_array;
   params.time_constant = tc_array;
   params.bias = b_array;
   params.gain = g_array;
-  int scm_err = 0;
   SCM scm_err_key = SCM_BOOL_F;
   SCM scm_err_list = SCM_EOL;
   SCM scm_input_pointer = SCM_UNSPECIFIED;
@@ -188,8 +186,6 @@ SCM_DEFINE (scm_step_ctrnn, "step-ctrnn*", 8, 0, 0,
   }
 
   err = step_ctrnn(ty_array, scm_to_double(h), &params);
-
-  scm_remember_upto_here_1 (scm_input_pointer);
 
 invalid_input_func:
   RELEASE_HANDLE(ty);
@@ -448,5 +444,6 @@ Let's write a test that checks the conversion with a genome of all 0s.
 
 (genome->ctrnn genome c3)
 @ 
+
 
 \appendix

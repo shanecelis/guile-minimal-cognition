@@ -786,7 +786,7 @@ SCM_DEFINE (scm_c_vision_input, "c-vision-input", 9, 1, 0,
     vargs.user = sight_listener;
   } else {
     // Expect nothing or a procedure.
-    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg2"), SCM_EOL);
   }
   setup_vision_args(&vargs); 
   cparams.input = vision_input; // C vision implementation.
@@ -830,7 +830,7 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
   vargs->Theta = scm_to_double(Theta);
   vargs->max_output = scm_to_double(max_output);
   vargs->R = NULL;
-  if (SCM_UNBNDP(sight_listener)) {
+  if (SCM_UNBNDP(sight_listener) || scm_is_false (sight_listener)) {
     vargs->sight_listener = NULL;
     vargs->user = NULL;
   } else if (scm_is_true(scm_procedure_p(sight_listener))) {
@@ -838,7 +838,8 @@ SCM_DEFINE (scm_make_c_vision_context, "make-c-vision-context", 8, 1, 0,
     vargs->user = sight_listener;
   } else {
     // Expect nothing or a procedure.
-    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"), SCM_EOL);
+    scm_throw(C_STRING_TO_SYMBOL("invalid-sight-listener-arg"),
+                                scm_list_1 (sight_listener));
   }
   setup_vision_args(vargs); 
   scm_array_get_handle(ty, vargs->ty_handle);

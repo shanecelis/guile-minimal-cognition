@@ -25,7 +25,7 @@ typedef struct fode_params {
   // XXX Consider changing this to a zero-based index.
   /* The effector function is called with with args (t, 1, params) and 
      (t, 2, params). */
-  double (*effector)(double t, int i, struct fode_params *params);
+  double (*effector)(double t, int i, void *context);
   void * user;
 } fode_params;
 
@@ -81,9 +81,19 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 6, 0, 0,
   fode_params params;
   params.n = scm_to_int(n);
   params.k = k_array;
+  SCM scm_effector_pointer = SCM_BOOL_F;
   if (scm_is_bool(effector_func) && scm_is_false(effector_func)) {
     params.effector = NULL;
     params.user = NULL;
+  } else if (scm_is_true(scm_unified_procedure_p (effector_func))) {
+    scm_effector_pointer = scm_unified_c_function_pointer(effector_func);
+    params.effector = scm_to_pointer(scm_effector_pointer);
+    SCM default_values = scm_unified_default_values(effector_func);
+    if (scm_is_true(scm_vector_p(default_values))) {
+      SCM entry = scm_c_vector_ref(default_values, 2);
+      if (scm_is_true(scm_pointer_p(entry)))
+        params.user = scm_to_pointer(entry);
+    }
   } else if (scm_is_true(scm_procedure_p(effector_func))) {
     params.effector = call_scm_effector_func;
     params.user = effector_func;
@@ -98,6 +108,8 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 6, 0, 0,
     err = step_fode(ty_array, scm_to_double(h), &params);
   }
 
+  scm_remember_upto_here_1 (scm_effector_pointer);
+
   RELEASE_HANDLE(ty);
   RELEASE_HANDLE(k);
   return err == 0 ? SCM_BOOL_T : SCM_BOOL_F;
@@ -105,8 +117,9 @@ SCM_DEFINE (scm_step_fode, "step-fode*", 6, 0, 0,
 @ 
 
 <<Function>>=
-double call_scm_effector_func(double t, int i, struct fode_params *params)
+double call_scm_effector_func(double t, int i, void *context)
 {
+  struct fode_params *params = (struct fode_params *) context;
   SCM res = scm_call_2((SCM) params->user, scm_from_double(t), scm_from_int(i));
   double result =  scm_to_double(res);
   return result;
@@ -117,11 +130,12 @@ double call_scm_effector_func(double t, int i, struct fode_params *params)
 (define-module (minimal-cognition fode)
  #:use-module (ice-9 optargs)
  #:use-module (oop goops)
- #:use-module (infix))
+ #:use-module (infix)
+ #:export (c-ctrnn-effector))
 
 ;; This can erroneously report a "file not found" error when
 ;; there is a symbol missing.
-(load-extension "/Users/shane/School/uvm/CSYS-395-evolutionary-robotics/noweb-eracs/ctrnn/src/minimal-cognition/libguile-fode" "init_fode")
+(load-extension "libguile-fode" "init_fode")
 
 <<Procedure>>
 @
@@ -177,6 +191,10 @@ Let's be sane and made some accessors for these parameter and state objects.
 
 (define-public (fode-time ty)
   (: ty @ 0))
+
+(define-public (fode-time-set! ty t)
+  (: ty @ 0 := t))
+
 (define (object-x-ref ty i)
 "Return the x coordinate of object i."
   (: ty @ ((2 * i) + 1)))
@@ -238,7 +256,7 @@ Let's be sane and made some accessors for these parameter and state objects.
 #include "fode.h"
 #include "math.h"
 <<Include GSL headers.>>
-
+#include "unified-procedure.h"
 #include "ctrnn.h" // We need some of the macros.  XXX split into util.h maybe.
 #endif
 
@@ -261,12 +279,31 @@ gsl_vector_memcpy(R, &K.vector);
 if (pparams->effector) {
   gsl_vector_set(R, 0, 
                     gsl_vector_get(R, 0) 
-                    * (pparams->effector(t, 1, pparams) 
-                     - pparams->effector(t, 2, pparams)));
+                    * (pparams->effector(t, 1, pparams->user) 
+                     - pparams->effector(t, 2, pparams->user)));
 }/* else {
   gsl_vector_set(R, 0, 0.);        
 }*/
 @
+
+Now we want to be able to drive a First Order Dynamics with a CTRNN.
+We'll use a C function to do it.
+
+<<Function>>=
+double ctrnn_effector(double time, int i, void *context) {
+  if (! context) {
+    fprintf(stderr, "Got NULL for context in effector; returning 0..");
+    return 0.;
+  }
+  double *ctrnn_state = (double *) context;
+  int first_effector_index = 9 + 1; // sensor-count + 1
+  return ctrnn_state[first_effector_index + i - 1];
+}
+@ 
+
+<<Primitive>>=
+SCM_GLOBAL_VARIABLE_INIT(scm_c_ctrnn_effector, "c-ctrnn-effector", scm_from_pointer(ctrnn_effector, NULL));
+@ 
 
 <<Initialize>>=
 void init_fode(void)

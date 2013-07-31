@@ -77,26 +77,26 @@ The last argument is the [[void *]] plumbing necessary in C.
   (list int double `(* ,(make-c-context-pointer)))))
 @ 
 
-This will create a function that looks kind of like this: (define (f a
-b #:optional (c (make-c-context-pointer))) ... ).
+This will create a function that looks kind of like this: [[(define (f a
+b #:optional (c (make-c-context-pointer))) ... )]].
 
 <<procedure>>=
-
-  (define (type? x)
-    (not (pair? x)))
-  (define (type-and-default? x)
-    (pair? x))
-  (define (just-type x)
-    (if (type? x)
-        x
-        (car x)))
-  (define* (just-default-value x #:optional (none-token #f))
-    (if (type-and-default? x)
-        (cadr x)
-        none-token))
+(define (type? x)
+  (not (pair? x)))
+(define (type-and-default? x)
+  (pair? x))
+(define (just-type x)
+  (if (type? x)
+      x
+      (car x)))
+(define* (just-default-value x #:optional (none-token #f))
+  (if (type-and-default? x)
+      (cadr x)
+      none-token))
 
 (define* (arg-types->default-values arg-types #:optional (none-token #f))
   (list->vector (map (lambda (x) (just-default-value x none-token)) arg-types)))
+
 @ 
 
 <<procedure>>=
@@ -122,7 +122,7 @@ b #:optional (c (make-c-context-pointer))) ... ).
         (if (or (< (length args) req-count)
                 (> (length args) all-count))
             (scm-error 'invalid-argument-count "unified-c->scheme-procedure" "Expected ~A to ~A arguments; instead got ~A arguments: ~A" (list req-count all-count (length args) args) #f))
-        (format #t "args ~a default-values ~a~%" args default-values)
+        #;(format #t "args ~a default-values ~a~%" args default-values)
         (apply basic-scheme-procedure (append args (drop default-values
                                                          (length args)))))))
 @ 
