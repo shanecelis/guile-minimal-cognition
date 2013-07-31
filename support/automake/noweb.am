@@ -1,27 +1,31 @@
 # noweb.am
 #SUFFIXES += .nw .tex .pdf
 
+SUFFIXES = .nw .html .tex
+
 if NOWEB
-BOILERPLATE=$(top_srcdir)/support/noweb/boiler-plate.nw
+
+NOWEB_INCLUDES ?=
+#NOWEAVE_FLAGS ?= -n -delay
+NOWEAVE_HTML_FLAGS ?= -filter l2h -index -html
+
 %.tex : %.nw 
 	$(AM_V_at) $(MAKE) all.defs
-	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -indexfrom all.defs $^ | cpif $@
+	$(AM_V_GEN) $(noweave) $(NOWEAVE_FLAGS) -indexfrom all.defs $^ | cpif $@
 
-#	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -index $^ | cpif $@
+%.html : %.nw 
+	$(AM_V_GEN) $(noweave) $(NOWEAVE_HTML_FLAGS) $^ | cpif $@
 
-#	$(AM_V_GEN) noweave $(NOWEAVE_FLAGS) -n -delay -x $^ | cpif $@
+warn_notangle = $(top_builddir)/bin/warn-notangle
 
-WARN_NOTANGLE = $(top_srcdir)/bin/warn-notangle
+%.h : %.nw $(NOWEB_INCLUDES)
+	$(AM_V_GEN) $(warn_notangle) -o $@ $(WARN_NOTANGLE_C_FLAGS) -- $(NOTANGLE_H_FLAGS) -R"file:$@" $^ 
 
+%-test.c %.c %.cpp : %.nw $(NOWEB_INCLUDES)
+	$(AM_V_GEN) $(warn_notangle) -o $@ $(WARN_NOTANGLE_C_FLAGS) -- $(NOTANGLE_C_FLAGS)  -R"file:$@" $^
 
-%.h : %.nw $(BOILERPLATE)
-	$(AM_V_GEN) $(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_H_FLAGS) -R"file:$@" $^ 
-
-%-test.c %.c %.cpp : %.nw $(BOILERPLATE)
-	$(AM_V_GEN) $(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_C_FLAGS)  -R"file:$@" $^
-
-%-test.scm %.scm : %.nw $(BOILERPLATE)
-	$(AM_V_GEN)	$(WARN_NOTANGLE) -o $@ $(WARN_NOTANGLE_FLAGS) -- $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^
+%-test.scm %.scm : %.nw $(NOWEB_INCLUDES)
+	$(AM_V_GEN)	$(warn_notangle) -o $@ $(WARN_NOTANGLE_LISP_FLAGS) -- $(NOTANGLE_LISP_FLAGS) -R"file:$@" $^
 
 all.defs: $(NOWEB_DEFS)
 	$(AM_V_GEN)	sort -u $^ | cpif $@
@@ -30,43 +34,41 @@ all.defs: $(NOWEB_DEFS)
 	$(AM_V_GEN) nodefs $< > $@
 
 %.nw.files : %.nw
-	$(AM_V_GEN) noroots $^ | grep file: | perl -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
+	$(AM_V_GEN) $(noroots) $^ | $(GREP) file: | $(PERL) -pe 's/<<file:(\S+)>>/\1/g;' | cpif $@
 
-%-paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
-	$(AM_V_GEN) (cat $(top_srcdir)/support/noweb/paper-wrapper.nw |	perl -pe "s/\\@FILE\\@/$$(basename -s .nw $<)/;") | cpif $@
+#%-paper.nw : %.nw $(top_srcdir)/support/noweb/paper-wrapper.nw
+# 	$(AM_V_GEN) (cat $(top_srcdir)/support/noweb/paper-wrapper.nw |	perl -pe "s/\\@FILE\\@/$$(basename -s .nw $<)/;") | cpif $@
 
 NOWEB_DEFS = $(NOWEB_FILES:.nw=.defs)
 NOWEB_TEXS = $(NOWEB_FILES:.nw=.tex)
-EXTRA_DIST += $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
-BUILT_SOURCES += $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
-CLEANFILES += $(NOWEB_PRODUCTS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
+NOWEB_EXTRA_DIST = $(NOWEB_FILES) $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
+NOWEB_BUILT_FILES = $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS)
+NOWEB_CLEANFILES = $(NOWEB_TEXS) $(NOWEB_DEFS) $(NOWEB_PRODUCTS) all.defs \
+	$(NOWEB_DOCS:.pdf=.aux) $(NOWEB_DOCS:.pdf=.log) $(NOWEB_DOCS:.pdf=.nwi) \
+	$(NOWEB_DOCS:.pdf=.out) $(NOWEB_DOCS:.pdf=.tdo) $(NOWEB_DOCS:.pdf=.toc) \
+	$(NOWEB_DOCS:.pdf=.tex.log) $(NOWEB_DOCS)
 
 else
-%.scm %.h %.c %.cpp %.tex : %.nw
+%-test.scm %.scm %.h %-test.c %.c %.cpp %.tex : %.nw
 	$(warning Warning: unable to update $@ from changed $< without noweb.)
 endif
 
-if LATEXMK
-%.pdf: %.tex
-	$(AM_V_GEN)	TEXINPUTS=$(srcdir):$(imagesdir): pdflatex -shell-escape -halt-on-error $< &> $$(basename $<).log || (cat $$(basename $<).log; false)
+if PDFLATEX
+
+%.pdf: %.tex $(NOWEB_TEXS)
+	$(AM_V_GEN) $(pdflatex) -draftmode -interaction=nonstopmode -halt-on-error $< 
 	noindex $<
-	$(AM_V_GEN) TEXINPUTS=$(srcdir):$(imagesdir): pdflatex -shell-escape -halt-on-error $< &> $$(basename $<).log || (cat $$(basename $<).log; false)
+	$(AM_V_GEN) $(pdflatex) -interaction=nonstopmode -halt-on-error $< 
 
-# $(AM_V_GEN)  latexmk -quiet -f -g -pdf $< &> $<.log || cat $<.log
-# noindex $<
-# $(AM_V_GEN) TEXINPUTS=$(srcdir):$(imagesdir): latexmk -quiet -f -g -pdf $< &> $<.log || cat $<.log
+pdf-local: $(NOWEB_DOCS) 
 
-clean-latexmk: 
-	for file in $(NOWEB_FILES:.nw=.tex); do \
-		test -f $$file && latexmk -C $$file && rm -f $$file; \
-	done; true
+doc-local: pdf-local
 
 else
 %.pdf : %.tex
 	$(warning Warning: unable to update $@ from changed $< without latexmk.)
 
-clean-latexmk:
 endif
 
-preview-local: $(NOWEB_DOCS)
-	open -a Skim.app $^ || open -a Preview.app $^
+show-doc-local: $(NOWEB_DOCS)
+	for file in $^; do $(OPEN) $$file; done

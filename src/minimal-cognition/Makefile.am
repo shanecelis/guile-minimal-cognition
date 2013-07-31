@@ -19,8 +19,8 @@ CLEANFILES = $(BUILT_SOURCES)
 
 doc: $(NOWEB_DOCS)
 
-if LATEXMK
-all-local : $(NOWEB_DOCS)
+if PDFLATEX
+all-local : 
 CLEANFILES += $(NOWEB_DOCS)
 
 ctrnn.tex: ctrnn.nw ctrnn-appendix.nw $(BOILERPLATE)
@@ -33,12 +33,13 @@ vision-paper.pdf: vision-paper.tex vision.tex
 # 	cat $^ | cpif $@
 
 endif
+
 clean-local : clean-latexmk
 
 MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl -n ctrnn-appendix=ctrnn -n ctrnn-cat=ctrnn --"
 #MARKUP_FLAGS = -markup "$(top_srcdir)/bin/namespace-markup.pl --"
 WARN_NOTANGLE_FLAGS = -W 
-NOWEAVE_FLAGS = $(MARKUP_FLAGS)
+NOWEAVE_FLAGS = -n -delay $(MARKUP_FLAGS)
 NOTANGLE_C_FLAGS = -c -L $(MARKUP_FLAGS)
 NOTANGLE_H_FLAGS = -L $(MARKUP_FLAGS)
 lib_LTLIBRARIES = libguile-ctrnn.la libguile-fode.la libguile-vision.la libguile-unified-procedure.la
@@ -88,11 +89,11 @@ SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
 # #ctrnn.scm ctrnn.h
 # ctrnn_c_SOURCES = ctrnn.nw ctrnn-appendix.nw
 
-check-log: 
-	$(MAKE) check || cat test-suite.log
+# check-log: 
+# 	$(MAKE) check || cat test-suite.log
 
-recheck-log: 
-	$(MAKE) recheck || cat test-suite.log
+# recheck-log: 
+# 	$(MAKE) recheck || cat test-suite.log
 
 #	@if test "$(V)" == "1" && test -z "$(TEST_LOGS)"; then echo "FAILED TEST LOGS"; files=`grep -l 'fail$$' $(TEST_LOGS)`; test -z "$$files" && cat $$files;	fi
 

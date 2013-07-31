@@ -49,6 +49,7 @@
             check-passed?
             check:failed
             check-report
+            check-exit
             )
   #:export-syntax (check check-throw check-true check-false)
   ) 
@@ -294,3 +295,7 @@
     ((check-ec q1 q2             etc ...)
      (check-ec (nested q1 q2)    etc ...))))
 
+;; XXX I added this just so I could integrate it with unit tests.
+(define (check-exit)
+  (exit (if (and #;(= (length test-errors) 0) 
+                 (= 0 (length check:failed))) 0 1)))
