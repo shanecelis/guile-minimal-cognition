@@ -318,7 +318,8 @@ void init_fode(void)
 \subsection{Test}
 <<file:fode-test.scm>>=
 ;; fode-test.scm
-(use-modules (minimal-cognition fode)
+(use-modules (check)
+             (minimal-cognition fode)
              (float-equality))
 (eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.

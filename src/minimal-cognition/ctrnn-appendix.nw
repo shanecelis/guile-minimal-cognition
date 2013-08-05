@@ -165,16 +165,16 @@ double fill_input(double t, int i, void *params)
 \subsection{Test}
 <<file:ctrnn-test.scm>>=
 ;; ctrnn-test.scm
-(use-modules (minimal-cognition ctrnn)
+(use-modules (check)
+             (minimal-cognition ctrnn)
              (float-equality))
 
 (eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.
            (module-use! (current-module) (resolve-module '(minimal-cognition ctrnn))))
 
-<<+ Test Preamble>>
 <<test>>
-<<+ Test Postscript>>
+(check-exit)
 @
 
 <<file:ctrnn-test.c>>=

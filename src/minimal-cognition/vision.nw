@@ -893,17 +893,18 @@ SCM_DEFINE (scm_wrap_dummy_ctrnn_params, "wrap-dummy-ctrnn-params", 1, 0, 0,
 \subsection{Test}
 <<file:vision-test.scm>>=
 ;; vision-test.scm
-(use-modules (minimal-cognition vision)
+(use-modules (check)
+             (minimal-cognition vision)
              ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
              (emacsy util)
              (srfi srfi-98)
              (minimal-cognition unified-procedure)
              )
-(eval-when (compile load eval)
+(use-private-modules (minimal-cognition vision))
+#;(eval-when (compile load eval)
            ;; Some trickery so we can test private procedures.
            (module-use! (current-module) (resolve-module '(minimal-cognition vision))))
 
-<<+ Test Preamble>>
 <<test>>
-<<+ Test Postscript>>
+(check-exit)
 @

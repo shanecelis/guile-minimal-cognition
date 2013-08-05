@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([minimal-cognition], [0.01], [bug-report@address])
+AC_INIT([guile-minimal-cognition], [0.1.0], [shane.celis@gmail.com])
 AC_CONFIG_AUX_DIR([support/build-aux])
 # Lies.
 #AM_INIT_GUILE_MODULE
@@ -33,8 +33,6 @@ AC_SUBST(guile_snarf)
 # Checks for libraries.
 PKG_CHECK_MODULES([GUILE], [guile-2.0])
 PKG_CHECK_MODULES([GSL], [gsl])
-
-AC_SUBST(GUILE_SITE_LIB)
 
 AC_SUBST(DISTDIR, ["${PACKAGE_TARNAME}-${PACKAGE_VERSION}"])
 

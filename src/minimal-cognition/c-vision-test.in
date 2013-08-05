@@ -1,4 +1,4 @@
 #!/bin/bash
 
 export USE_C_VISION_INPUT=1
-@abs_top_srcdir@/bin/runtests vision-test.scm
+@abs_top_srcdir@/bin/env guile vision-test.scm

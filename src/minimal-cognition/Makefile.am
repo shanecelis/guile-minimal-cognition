@@ -63,8 +63,8 @@ include_HEADERS += fode.h
 
 MAINTAINERCLEANFILES = Makefile.in config.h.in 
 
-guilemoduledir = $(GUILE_SITE_LIB)/$(PACKAGE_TARNAME)
-dist_guilemodule_DATA = ctrnn.scm
+guilemoduledir = $(prefix)/share/guile/site/minimal-cognition
+dist_guilemodule_DATA = ctrnn.scm fode.scm vision.scm
 
 check_PROGRAMS = ctrnn-ctest vision-ctest unified-procedure-ctest
 ctrnn_ctest_LDADD   = libguile-ctrnn.la libguile-unified-procedure.la
@@ -80,7 +80,7 @@ unified_procedure_ctest_SOURCES = unified-procedure-test.c
 #TESTS_ENVIRONMENT = LOG_COMPILER
 TESTS = ctrnn-test.scm fode-test.scm vision-test.scm ctrnn-ctest vision-ctest c-vision-test unified-procedure-ctest unified-procedure-test.scm
 TEST_EXTENSIONS = .scm 
-SCM_LOG_COMPILER = $(top_builddir)/bin/runtests
+SCM_LOG_COMPILER = $(top_builddir)/bin/env guile
 
 # TESTS_ENVIRONMENT = 
 # TESTS =  ctrnn-test vision-test 

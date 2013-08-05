@@ -237,7 +237,6 @@ void init_ctrnn(void)
 (define-module (minimal-cognition ctrnn)
  #:use-module (ice-9 optargs)
  #:use-module (oop goops)
- #:use-module ((vector-math) #:select (vector-move!*))
  #:use-module (emacsy util)
  #:use-module (minimal-cognition unified-procedure))
 
@@ -249,6 +248,25 @@ void init_ctrnn(void)
 
 <<Procedure>>
 @
+
+<<Procedure>>=
+(define* (range m n #:optional (inc 1))
+  (define (range* m n inc comp) 
+    (if (comp m n)
+        '()
+        (cons m (range* (+ m inc) n inc comp))))
+  (if (and (> m n) (> inc 0))
+      (range* m n (- inc) <)
+      (range* m n inc >)))
+
+(define (vector-move!* dest di df src si sf)
+  (if (not (= (- sf si) (- df di)))
+      (throw 'different-ranges))
+  (for-each (lambda (i)
+              (generalized-vector-set! dest (+ di i) (generalized-vector-ref src (+ si i))))
+            (range 0 (- sf si)))
+  dest)
+@ 
 
 <<Procedure>>=
 (define-public (step-ctrnn yt h ctrnn)
