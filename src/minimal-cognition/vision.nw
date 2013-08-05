@@ -16,7 +16,7 @@ modules and defines some procedures.\footnote{Style note: I use the
   #:use-module (ice-9 optargs)
   #:use-module (minimal-cognition fode)
   #:use-module (minimal-cognition ctrnn)
-  #:use-module (minimal-cognition unified-procedure)
+  #:use-module (unified-procedure)
   #:use-module (system foreign)
   #:use-module (rnrs bytevectors)
   #:export (vision-input-pointer
@@ -898,7 +898,7 @@ SCM_DEFINE (scm_wrap_dummy_ctrnn_params, "wrap-dummy-ctrnn-params", 1, 0, 0,
              ((float-equality) #:renamer (symbol-prefix-proc 'fe:))
              (emacsy util)
              (srfi srfi-98)
-             (minimal-cognition unified-procedure)
+             (unified-procedure)
              )
 (use-private-modules (minimal-cognition vision))
 #;(eval-when (compile load eval)

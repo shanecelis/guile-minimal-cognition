@@ -33,6 +33,7 @@ AC_SUBST(guile_snarf)
 # Checks for libraries.
 PKG_CHECK_MODULES([GUILE], [guile-2.0])
 PKG_CHECK_MODULES([GSL], [gsl])
+PKG_CHECK_MODULES([UNIFIED_PROCEDURE], [guile-unified-procedure])
 
 AC_SUBST(DISTDIR, ["${PACKAGE_TARNAME}-${PACKAGE_VERSION}"])
 

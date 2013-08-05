@@ -238,7 +238,7 @@ void init_ctrnn(void)
  #:use-module (ice-9 optargs)
  #:use-module (oop goops)
  #:use-module (emacsy util)
- #:use-module (minimal-cognition unified-procedure))
+ #:use-module (unified-procedure))
 
 ;; This is erroneously reported as a "file not found" error when
 ;; there is a symbol missing. Ugh.
