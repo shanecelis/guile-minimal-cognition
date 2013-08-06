@@ -178,7 +178,7 @@
   (if (not (= (- sf si) (- df di)))
       (throw 'different-ranges))
   (for-each (lambda (i)
-              (generalized-vector-set! dest (+ di i) (generalized-vector-ref src (+ si i))))
+              (array-set! dest (array-ref src (+ si i)) (+ di i)))
             (range 0 (- sf si)))
   dest)
 
@@ -276,7 +276,7 @@
   (apply =? (vector->list a) (vector->list b) rest))
 
 (define-method (=? (a <uvec>) (b <uvec>) . rest)
-  (apply =? (generalized-vector->list a) (generalized-vector->list b) rest))
+  (apply =? (array->list a) (array->list b) rest))
 
 (define-method (=? a b . rest)
   #f)

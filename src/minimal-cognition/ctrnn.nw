@@ -263,7 +263,7 @@ void init_ctrnn(void)
   (if (not (= (- sf si) (- df di)))
       (throw 'different-ranges))
   (for-each (lambda (i)
-              (generalized-vector-set! dest (+ di i) (generalized-vector-ref src (+ si i))))
+              (array-set! dest (array-ref src (+ si i)) (+ di i)))
             (range 0 (- sf si)))
   dest)
 @ 
@@ -307,9 +307,9 @@ void init_ctrnn(void)
 
 (define* (vector-map! f v #:optional (i 0))
   "Changes the vector in place."
-  (if (< i (generalized-vector-length v))
+  (if (< i (array-length v))
       (begin
-        (generalized-vector-set! v i (f (generalized-vector-ref v i) i))
+        (array-set! v (f (array-ref v i) i) i)
         (vector-map! f v (1+ i)))
       v))
 
@@ -328,7 +328,7 @@ void init_ctrnn(void)
   (- 0.1 (random 0.2)))
  (vector-map! (lambda (x i)
                (random-state)) ctrnn-state)
- (generalized-vector-set! ctrnn-state 0 0.) ;; Set the time component to 0.
+ (array-set! ctrnn-state 0. 0) ;; Set the time component to 0.
  ctrnn-state
 )
 @ 
@@ -407,7 +407,7 @@ Now, let's convert this genome to a ctrnn.
   (define (remap a b vector)
     (vector-map! (lambda (x i)
                    (+ a (* (/ (+ x 1.0) 2) (- b a)))) vector))
-  #;(format #t "GENOME ~a ... ~%" (generalized-vector-ref genome 0))
+  #;(format #t "GENOME ~a ... ~%" (array-ref genome 0))
   (let ((n (n ctrnn))
         (i 0))
     (remap -5 5 (vector-move!* (weights ctrnn) 0 (1- (* n n)) 

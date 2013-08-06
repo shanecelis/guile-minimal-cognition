@@ -297,7 +297,7 @@ double ctrnn_effector(double time, int i, void *context) {
   }
   double *ctrnn_state = (double *) context;
   int first_effector_index = 9 + 1; // sensor-count + 1
-  return ctrnn_state[first_effector_index + i - 1];
+  return tanh(ctrnn_state[first_effector_index + i - 1]);
 }
 @ 
 
